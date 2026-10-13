@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { get } from './api';
+import { get, post } from './api';
 import { ago, clock } from './format';
 import type { HistoryItem, SearchResult } from './types';
 
@@ -20,6 +20,13 @@ export function History({ onDetails }: { onDetails: (id: string) => void }) {
       .then(setItems)
       .catch((err) => setError(String(err.message ?? err)));
   }, []);
+
+  async function remove(h: HistoryItem) {
+    if (!confirm(`Move "${h.title ?? (h.firstPrompt || h.id.slice(0, 8))}" to the Trash? It leaves History and search.`)) return;
+    const err = await post(`/api/sessions/${h.id}/delete`);
+    setError(err);
+    if (!err) setItems((list) => list?.filter((x) => x.id !== h.id) ?? null);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -98,6 +105,9 @@ export function History({ onDetails }: { onDetails: (id: string) => void }) {
                     <span className="closed-time">{ago(h.lastActivity)}</span>
                   </span>
                   {h.title && h.firstPrompt && <span className="history-snippet">{h.firstPrompt}</span>}
+                </button>
+                <button type="button" className="details-button" onClick={() => remove(h)} title="Move the session file to the Trash">
+                  Delete
                 </button>
               </li>
             ))}

@@ -3,6 +3,7 @@ import { get, post } from './api';
 import { DetailPanel } from './DetailPanel';
 import { ago } from './format';
 import { History } from './History';
+import { Worktrees } from './Worktrees';
 import { SessionCard } from './SessionCard';
 import { unlockSound } from './sounds';
 import { isWaiting, type ClosedSession, type Folder, type Session, type Settings, type Status } from './types';
@@ -80,8 +81,15 @@ function ClosedSection({ closed, onDetails }: { closed: ClosedSession[]; onDetai
               <span className="title">{c.title ?? c.project}</span>
               <span className="project">{c.project}</span>
               {c.branch && <span className="branch">{c.branch}</span>}
-              <span className="closed-time">closed {ago(c.closedAt)}</span>
+              <span className="closed-time">
+                {c.hidden ? 'hidden' : 'closed'} {ago(c.closedAt)}
+              </span>
             </button>
+            {c.hidden && (
+              <button type="button" className="details-button" onClick={() => post(`/api/sessions/${c.id}/unhide`)} title="Show it in the live list again">
+                show
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -174,15 +182,17 @@ function HeaderToggles({ settings }: { settings: Settings }) {
   );
 }
 
+const tabOf = () => (location.hash === '#history' ? 'history' : location.hash === '#cleanup' ? 'cleanup' : 'live');
+
 export function App() {
   const { sessions, settings, connected, closed } = useEvents();
   const [detailId, setDetailId] = useState<string | null>(null);
-  // "#history" opens the tucked-away History tab. The Live view is the default.
-  const [tab, setTab] = useState<'live' | 'history'>(location.hash === '#history' ? 'history' : 'live');
+  // "#history" and "#cleanup" open the other tabs. The Live view is the default.
+  const [tab, setTab] = useState(tabOf);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const onHash = () => setTab(location.hash === '#history' ? 'history' : 'live');
+    const onHash = () => setTab(tabOf());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -238,6 +248,9 @@ export function App() {
           <a href="#history" className={tab === 'history' ? 'active' : ''}>
             History
           </a>
+          <a href="#cleanup" className={tab === 'cleanup' ? 'active' : ''}>
+            Cleanup
+          </a>
         </nav>
         <div className="header-actions">
           <NewSessionMenu folders={folders} onOpen={openFolder} onChange={loadFolders} />
@@ -246,6 +259,7 @@ export function App() {
       </header>
       {newError && <p className="error">{newError}</p>}
       {tab === 'history' && <History onDetails={setDetailId} />}
+      {tab === 'cleanup' && <Worktrees />}
       {tab === 'live' && (
         <>
           {list.length === 0 && <p className="empty">No active sessions in the last 12 hours.</p>}

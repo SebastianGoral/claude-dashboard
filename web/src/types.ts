@@ -74,6 +74,8 @@ export interface ClosedSession {
   lastMessage: string;
   lastActivity: number;
   closedAt: number;
+  /** True if the user hid the session. */
+  hidden?: boolean;
 }
 
 // Same shapes as server/src/history.ts.
@@ -103,4 +105,14 @@ export interface SearchResult {
   bytesScanned: number;
   elapsedMs: number;
   truncated: boolean;
+}
+
+// Same shape as Worktree in server/src/cleanup.ts.
+export interface Worktree {
+  path: string;
+  repo: string;
+  branch: string | null;
+  /** Uncommitted and untracked files. Null if the folder is gone. */
+  changes: number | null;
+  sessionId: string | null;
 }

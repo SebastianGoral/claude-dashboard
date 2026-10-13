@@ -12,8 +12,8 @@ const run = promisify(execFile);
  */
 const PROCESS_DIR = join(homedir(), '.claude', 'sessions');
 
-// Selects the Terminal.app tab that uses the TTY, minimizes all other Terminal windows,
-// and brings the tab's window to the front.
+// Selects the Terminal.app tab that uses the TTY and brings only the tab's window to the front.
+// Other Terminal windows stay where they are.
 // "activate" would raise all Terminal windows, so System Events makes Terminal frontmost instead.
 const FOCUS_SCRIPT = `
 on run argv
@@ -30,12 +30,6 @@ on run argv
     end repeat
     if targetId is missing value then return "not found"
 
-    -- Loop over ids: minimizing a window changes the order of "windows".
-    set winIds to id of every window
-    repeat with winId in winIds
-      set w to window id (contents of winId)
-      if (contents of winId) is not targetId and miniaturized of w is false then set miniaturized of w to true
-    end repeat
     set target to window id targetId
     set miniaturized of target to false
     set index of target to 1
@@ -44,16 +38,18 @@ on run argv
   return "ok"
 end run`;
 
-interface ProcessInfo {
+export interface ProcessInfo {
   pid: number;
   entrypoint?: string;
   hostSessionId?: string;
+  /** Process start time, as `ps -o lstart=` prints it in UTC. */
+  procStart?: string;
 }
 
 /** The desktop app accepts only this id format in its link. */
 const DESKTOP_SESSION_ID = /^local_[A-Za-z0-9-]{1,64}$/;
 
-async function findProcess(sessionId: string): Promise<ProcessInfo | null> {
+export async function findProcess(sessionId: string): Promise<ProcessInfo | null> {
   const files = (await readdir(PROCESS_DIR).catch(() => [])).filter((f) => f.endsWith('.json'));
   for (const file of files) {
     try {

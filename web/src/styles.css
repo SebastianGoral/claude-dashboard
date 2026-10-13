@@ -297,6 +297,11 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.details-button.confirm {
+  color: var(--your-turn);
+  border-color: var(--your-turn);
+}
+
 a.button {
   font-size: 13px;
   color: var(--text);
@@ -656,4 +661,24 @@ header {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 8px;
+}
+
+/* Cleanup: a row button next to "show" (Recently closed) and "Delete" (History). */
+.closed-list li,
+.history-list li,
+.worktree-list li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.worktree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.worktree-list .history-item {
+  cursor: default;
 }

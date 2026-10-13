@@ -1,6 +1,7 @@
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
-import { ClosedStore } from './closed.js';
+import { killSession, listWorktrees, removeWorktree, trashSession } from './cleanup.js';
+import { ClosedStore, liveSessions } from './closed.js';
 import { readDetail } from './detail.js';
 import { findSessionFile } from './files.js';
 import { stat } from 'node:fs/promises';
@@ -162,6 +163,59 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
       .header('Content-Type', 'text/markdown; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="${name}"`)
       .send(markdown);
+  });
+
+  // Hides a session from the live list. It moves to "Recently closed". New activity shows it again.
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/hide', async (req, reply) => {
+    if (!closed.hide(req.params.id)) return reply.code(404).send({ error: 'Session not found' });
+    return { ok: true };
+  });
+
+  // Stops the claude process of a Terminal session, then hides the session.
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/kill', async (req, reply) => {
+    const err = await killSession(req.params.id).catch((e) => `Could not stop the process: ${message(e)}`);
+    if (err) return reply.code(409).send({ error: err });
+    closed.hide(req.params.id);
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/unhide', async (req) => {
+    closed.unhide(req.params.id);
+    return { ok: true };
+  });
+
+  // Moves the session file to the macOS Trash. Not while the session has a live process.
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/delete', async (req, reply) => {
+    const id = req.params.id;
+    if ((await liveSessions()).has(id)) return reply.code(409).send({ error: 'The session still runs. Close it first.' });
+    const file = store.pathOf(id) ?? (await findSessionFile(id));
+    if (!file) return reply.code(404).send({ error: 'Session file not found' });
+    try {
+      await trashSession(file);
+      closed.forget(id);
+      return { ok: true };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ error: `Could not move to the Trash: ${message(err)}` });
+    }
+  });
+
+  // Worktrees under .claude/worktrees of all known folders, hidden folders too.
+  const worktrees = async () => listWorktrees((await listFolders(settings.view().extraFolders, [])).map((f) => f.path), await liveSessions());
+  app.get('/api/worktrees', worktrees);
+
+  // Removes a worktree from the list. Git refuses if it has changes. The branch stays.
+  app.post<{ Body: { path?: string } }>('/api/worktrees/remove', async (req, reply) => {
+    const w = (await worktrees()).find((x) => x.path === req.body?.path);
+    if (!w) return reply.code(404).send({ error: 'Unknown worktree' });
+    if (w.sessionId) return reply.code(409).send({ error: 'A live session runs in this worktree. Close it first.' });
+    try {
+      await removeWorktree(w);
+      return { ok: true };
+    } catch (err) {
+      const stderr = (err as { stderr?: string }).stderr?.trim();
+      return reply.code(409).send({ error: stderr || message(err) });
+    }
   });
 
   // All session files, the newest first.
