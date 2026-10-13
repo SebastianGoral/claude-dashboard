@@ -8,7 +8,7 @@ A local dashboard for macOS. It shows all your Claude Code sessions at once: fro
 - A "Waiting for you" section, sounds (with a mute switch), and the waiting count in the tab title, the Dock and the menu bar.
 - Exact "needs permission" status with Claude Code hooks (optional, see below).
 - Tool errors and API errors on the card.
-- Detail panel: recent messages, tool calls and sub-agents. Markdown export.
+- Detail panel: recent messages, tool calls and sub-agents.
 - "Recently closed" sessions, a History tab, and search over all sessions.
 
 ## Requirements

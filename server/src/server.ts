@@ -6,7 +6,7 @@ import { findSessionFile } from './files.js';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, resolve } from 'node:path';
-import { exportMarkdown, listFolders, listHistory, search } from './history.js';
+import { listFolders, listHistory, search } from './history.js';
 import { focusTerminal, openNewSession } from './focus.js';
 import { liveProcesses } from './processes.js';
 import { hooksInstalled, installHooks, removeHooks } from './hooks.js';
@@ -151,16 +151,6 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
     const file = store.pathOf(req.params.id) ?? (await findSessionFile(req.params.id));
     if (!file) return reply.code(404).send({ error: 'Session file not found' });
     return readDetail(file, req.params.id);
-  });
-
-  app.get<{ Params: { id: string } }>('/api/sessions/:id/export.md', async (req, reply) => {
-    const file = store.pathOf(req.params.id) ?? (await findSessionFile(req.params.id));
-    if (!file) return reply.code(404).send({ error: 'Session file not found' });
-    const { name, markdown } = await exportMarkdown(file, req.params.id);
-    return reply
-      .header('Content-Type', 'text/markdown; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="${name}"`)
-      .send(markdown);
   });
 
   // Hides a session from the live list. It moves to "Recently closed". New activity shows it again.

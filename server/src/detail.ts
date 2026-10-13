@@ -44,10 +44,9 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 
 /**
  * Turns JSONL lines into entries. Tool results are joined to their tool call.
- * Sidechain lines are skipped unless `sidechain`. Texts are clipped unless `full` (Markdown export).
+ * Sidechain lines are skipped unless `sidechain`. Texts are clipped.
  */
-export function parseEntries(lines: string[], { sidechain = false, full = false } = {}): Entry[] {
-  const text = (value: string, max: number) => (full ? value : clip(value, max));
+export function parseEntries(lines: string[], { sidechain = false } = {}): Entry[] {
   const entries: Entry[] = [];
   const tools = new Map<string, Extract<Entry, { kind: 'tool' }>>();
   for (const raw of lines) {
@@ -58,13 +57,13 @@ export function parseEntries(lines: string[], { sidechain = false, full = false 
       for (const r of user.toolResults) {
         const tool = tools.get(r.toolUseId);
         if (!tool) continue;
-        tool.result = text(r.text.trim(), RESULT_CHARS);
+        tool.result = clip(r.text.trim(), RESULT_CHARS);
         tool.isError = r.isError;
         tool.doneAt = at;
       }
-      if (user.prompt) entries.push({ kind: 'user', at, text: text(user.prompt, TEXT_CHARS) });
+      if (user.prompt) entries.push({ kind: 'user', at, text: clip(user.prompt, TEXT_CHARS) });
     } else if (assistant) {
-      for (const t of assistant.texts) if (t.trim()) entries.push({ kind: 'assistant', at, text: text(t.trim(), TEXT_CHARS) });
+      for (const t of assistant.texts) if (t.trim()) entries.push({ kind: 'assistant', at, text: clip(t.trim(), TEXT_CHARS) });
       for (const t of assistant.toolUses) {
         const entry = { kind: 'tool' as const, at, id: t.id, tool: t.name, input: shortInput(t.input), result: null, isError: false, doneAt: null };
         tools.set(t.id, entry);

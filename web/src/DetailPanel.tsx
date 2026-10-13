@@ -108,9 +108,6 @@ export function DetailPanel({ sessionId, title, onClose }: { sessionId: string; 
           <button type="button" onClick={focus}>
             Open terminal
           </button>
-          <a className="button" href={`/api/sessions/${sessionId}/export.md`} download>
-            Export Markdown
-          </a>
           <button type="button" onClick={onClose} aria-label="Close">
             ✕
           </button>

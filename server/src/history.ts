@@ -2,7 +2,6 @@ import { createReadStream } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { parseEntries, type Entry } from './detail.js';
 import { PROJECTS_DIR, readTailLines } from './files.js';
 import { projectRoot } from './session.js';
 import { pickTitle, readLine, shortInput, type Titles, type TranscriptLine } from './transcript.js';
@@ -239,45 +238,4 @@ export async function search(query: string): Promise<SearchResult> {
     console.warn(`search slow: "${query}" took ${result.elapsedMs} ms over ${result.filesScanned} files (${Math.round(result.bytesScanned / 1e6)} MB)`);
   }
   return result;
-}
-
-/** All entries of a session file, read with a stream. */
-async function readAllEntries(path: string): Promise<Entry[]> {
-  const raw: string[] = [];
-  for await (const line of createInterface({ input: createReadStream(path), crlfDelay: Infinity })) if (line) raw.push(line);
-  return parseEntries(raw, { full: true });
-}
-
-const fence = (text: string) => {
-  const longest = Math.max(2, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
-  const ticks = '`'.repeat(longest + 1);
-  return `${ticks}\n${text}\n${ticks}`;
-};
-
-/** A Markdown document of the whole session: prompts, answers and tool calls with their results. */
-export async function exportMarkdown(path: string, sessionId: string): Promise<{ name: string; markdown: string }> {
-  const [entries, info, head, tail] = await Promise.all([readAllEntries(path), stat(path), readHead(path), readTailLines(path, TAIL_BYTES)]);
-  const item = summarize({ id: sessionId, path, mtimeMs: info.mtimeMs, size: info.size }, head, tail);
-  const title = item.title || item.firstPrompt.slice(0, 60) || sessionId;
-  const time = (at: number) => (at ? new Date(at).toLocaleString() : '');
-  const out = [
-    `# ${title}`,
-    '',
-    `- Project: ${item.project}`,
-    ...(item.branch ? [`- Branch: ${item.branch}`] : []),
-    `- Session: ${sessionId}`,
-    ...(entries[0] ? [`- Started: ${time(entries[0].at)}`] : []),
-    `- Last activity: ${time(item.lastActivity)}`,
-    '',
-  ];
-  for (const e of entries) {
-    if (e.kind === 'user') out.push(`## You · ${time(e.at)}`, '', e.text, '');
-    else if (e.kind === 'assistant') out.push(`## Claude · ${time(e.at)}`, '', e.text, '');
-    else if (e.kind === 'tool') {
-      out.push(`**${e.tool}** \`${e.input.replace(/`/g, "'")}\`${e.isError ? ' (error)' : ''}`, '');
-      if (e.result) out.push('<details><summary>Result</summary>', '', fence(e.result), '', '</details>', '');
-    }
-  }
-  const name = `${(item.title ?? item.project).replace(/[^\w.-]+/g, '-').slice(0, 60)}-${sessionId.slice(0, 8)}.md`;
-  return { name, markdown: out.join('\n') };
 }

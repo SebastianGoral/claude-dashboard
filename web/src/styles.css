@@ -302,19 +302,6 @@ button:disabled {
   border-color: var(--your-turn);
 }
 
-a.button {
-  font-size: 13px;
-  color: var(--text);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 10px;
-  text-decoration: none;
-}
-a.button:hover {
-  border-color: var(--muted);
-}
-
 /* The detail panel: a drawer on the right. Full width on a phone. */
 .detail {
   position: fixed;
