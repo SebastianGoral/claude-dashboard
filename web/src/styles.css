@@ -267,148 +267,10 @@ button:disabled {
   border-radius: 4px;
   padding: 0 4px;
 }
-
-/* Loop cards: no click action, so no pointer. */
-.card.loop {
-  cursor: default;
-}
-.card.loop:hover {
-  border-color: var(--border);
-}
-.card.loop.success {
-  border-color: var(--ok);
-}
-.card.loop.failed {
-  border-color: var(--your-turn);
-}
-.card.loop.stopped {
-  opacity: 0.65;
-}
-.badge.loop-running,
-.badge.loop-checking {
-  color: var(--working);
-}
-.badge.loop-success {
-  color: var(--ok);
-  font-weight: 600;
-}
-.badge.loop-failed {
-  color: var(--your-turn);
-  font-weight: 600;
-}
-.badge.loop-stopped {
-  color: var(--idle);
-}
-
-.check {
-  font-size: 12px;
-}
-.check summary {
-  cursor: pointer;
-  color: var(--muted);
-}
-.check pre {
-  max-height: 200px;
-  overflow: auto;
-  font-size: 11px;
-  white-space: pre-wrap;
-  background: var(--bg);
-  padding: 8px;
-  border-radius: 4px;
-  margin: 6px 0 0;
-}
-
-.loop-form {
-  cursor: default;
-  margin-bottom: 24px;
-  max-width: 640px;
-  gap: 10px;
-}
-.loop-form:hover {
-  border-color: var(--border);
-}
-.loop-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.loop-form input,
-.loop-form textarea {
-  font: inherit;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
-}
 .hint {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
-}
-
-/* A loop or workflow session does not wait for you: no highlight. The run card shows the state. */
-.card.run-session {
-  border: 1px solid var(--border);
-  background: var(--card);
-}
-
-.steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.step {
-  font-size: 12px;
-  border-left: 3px solid var(--border);
-  padding-left: 8px;
-}
-.step.running,
-.step.checking {
-  border-left-color: var(--working);
-}
-.step.done {
-  border-left-color: var(--ok);
-}
-.step.failed {
-  border-left-color: var(--your-turn);
-}
-.step-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-.step-name {
-  font-weight: 600;
-}
-.step-status {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.step-status.running,
-.step-status.checking {
-  color: var(--working);
-}
-.step-status.done {
-  color: var(--ok);
-}
-.step-status.failed {
-  color: var(--your-turn);
-}
-.loop-form select {
-  font: inherit;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
 }
 
 /* Exact permission prompt from hooks: solid, not dashed. */
@@ -634,15 +496,6 @@ a.button:hover {
   margin-left: auto;
 }
 
-.today-cost {
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.cost {
-  font-variant-numeric: tabular-nums;
-}
-
 .tabs {
   display: flex;
   gap: 4px;
@@ -664,8 +517,7 @@ a.button:hover {
   gap: 8px;
   margin-bottom: 12px;
 }
-.search input,
-.palette input {
+.search input {
   flex: 1;
   min-width: 0;
   font: inherit;
@@ -715,63 +567,6 @@ a.button:hover {
   white-space: nowrap;
 }
 
-.palette-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgb(0 0 0 / 0.3);
-  z-index: 20;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 12vh 16px 0;
-}
-.palette {
-  width: min(600px, 100%);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 70vh;
-}
-.palette ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-}
-.palette-item {
-  width: 100%;
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  text-align: left;
-  border-color: transparent;
-  min-width: 0;
-}
-.palette-item.selected {
-  background: var(--bar);
-}
-.palette-item .title {
-  font-weight: 600;
-}
-.palette-item .project {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.palette-group {
-  font-size: 11px;
-  color: var(--muted);
-  margin-left: auto;
-}
-.palette-group.live {
-  color: var(--working);
-}
-
 .source {
   font-size: 11px;
   color: var(--muted);
@@ -779,81 +574,6 @@ a.button:hover {
   border-radius: 4px;
   padding: 0 4px;
   white-space: nowrap;
-}
-.cache {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.cache.expired {
-  color: var(--idle);
-}
-
-.view-switch {
-  display: flex;
-}
-.view-switch button {
-  border-radius: 0;
-}
-.view-switch button:first-child {
-  border-radius: 6px 0 0 6px;
-}
-.view-switch button:last-child {
-  border-radius: 0 6px 6px 0;
-}
-.view-switch button + button {
-  border-left: none;
-}
-.header-toggle.active {
-  color: var(--text);
-  background: var(--bar);
-}
-
-/* List view: one compact row per session. */
-.view-list .grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.view-list .card {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-}
-.view-list .card .message {
-  display: none;
-}
-.view-list .card .session-error,
-.view-list .card .error {
-  grid-column: 1 / -1;
-}
-
-/* Kanban view: one column per status. Columns wrap on small screens. */
-.kanban {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  align-items: start;
-}
-.kanban .grid {
-  grid-template-columns: 1fr;
-}
-.kanban-col {
-  background: var(--bar);
-  border-radius: 8px;
-  padding: 8px;
-  margin-bottom: 0;
-  min-width: 0;
-}
-.kanban-col.your_turn h2 {
-  color: var(--your-turn);
-}
-.kanban-col.needs_permission h2 {
-  color: var(--maybe);
-}
-.kanban-col.working h2 {
-  color: var(--working);
 }
 
 header {

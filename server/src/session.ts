@@ -2,11 +2,6 @@ import { basename, dirname } from 'node:path';
 
 export type Status = 'working' | 'your_turn' | 'needs_permission' | 'idle';
 
-/** A loop or workflow run of claude-dash that owns the session. */
-export interface RunRef {
-  kind: 'loop' | 'workflow';
-  id: string;
-}
 
 /** What the session sends to the browser. Times are epoch milliseconds. */
 export interface SessionView {
@@ -21,8 +16,6 @@ export interface SessionView {
   contextTokens: number;
   contextLimit: number;
   lastActivity: number;
-  /** The loop or workflow that runs this session, or null. */
-  run: RunRef | null;
   /** True if a hook gave the status (exact). False: a guess from the JSONL file. */
   exact: boolean;
   /** The tool that waits for permission (from hooks), or null. */
@@ -31,11 +24,6 @@ export interface SessionView {
   error: SessionError | null;
   /** Where the session runs, from the "entrypoint" field. */
   source: Source;
-  /**
-   * When the prompt cache of the last API call expires (epoch ms), or null if the session used no cache.
-   * About: the TTL counts from the start of the request, the line time is its end.
-   */
-  cacheExpiresAt: number | null;
 }
 
 export type Source = 'terminal' | 'desktop' | 'vscode' | 'sdk' | 'other';
@@ -48,8 +36,6 @@ function sourceOf(entrypoint: string): Source {
   return 'other';
 }
 
-const CACHE_5M_MS = 5 * 60_000;
-const CACHE_1H_MS = 60 * 60_000;
 
 export interface SessionError {
   kind: 'tool' | 'api';
@@ -100,11 +86,6 @@ export class Session {
   lastLineAt = 0;
   /** Time of the last write to any sub-agent file of this session. */
   lastSubagentWrite = 0;
-  /**
-   * The run, from the file alone: an Agent SDK session in a loop or workflow worktree.
-   * The server forgets its runs on restart, but these sessions still must not count as waiting.
-   */
-  run: RunRef | null = null;
 
   private marker: TurnMarker | null = null;
   private markerAt = 0;
@@ -121,10 +102,6 @@ export class Session {
   /** Tool names by tool_use id, for the tool name of an error. */
   private toolNames = new Map<string, string>();
   private source: Source = 'other';
-  /** Time of the last real API call (assistant line with usage) that used the cache. */
-  private cacheAt = 0;
-  /** True once the session wrote a 1-hour cache entry: Claude Code then uses the 1-hour TTL. */
-  private cache1h = false;
 
   constructor(
     readonly id: string,
@@ -143,13 +120,7 @@ export class Session {
     }
     if (line.isSidechain) return;
 
-    if (typeof line.cwd === 'string') {
-      this.project = projectName(line.cwd, this.projectDir);
-      const run = /[/\\]\.claude[/\\]worktrees[/\\](loop|wf)-([0-9a-f]+)$/.exec(line.cwd);
-      if (run && typeof line.entrypoint === 'string' && line.entrypoint.startsWith('sdk')) {
-        this.run = { kind: run[1] === 'loop' ? 'loop' : 'workflow', id: run[2] };
-      }
-    }
+    if (typeof line.cwd === 'string') this.project = projectName(line.cwd, this.projectDir);
     if (typeof line.gitBranch === 'string' && line.gitBranch) this.branch = line.gitBranch;
     if (typeof line.entrypoint === 'string') this.source = sourceOf(line.entrypoint);
     const at = Date.parse(line.timestamp) || this.lastLineAt;
@@ -203,11 +174,6 @@ export class Session {
       this.error = { kind: 'api', text: textOf(message?.content).slice(0, ERROR_CHARS) || 'API error', tool: null, at };
     } else if (this.error?.kind === 'api' && message?.model !== '<synthetic>') {
       this.error = null;
-    }
-    const u = message?.usage;
-    if (u && message?.model !== '<synthetic>' && (u.cache_read_input_tokens > 0 || u.cache_creation_input_tokens > 0)) {
-      this.cacheAt = Math.max(this.cacheAt, at);
-      if (u.cache_creation?.ephemeral_1h_input_tokens > 0) this.cache1h = true;
     }
     if (Array.isArray(message?.content)) {
       for (const b of message.content) if (b?.type === 'tool_use' && typeof b.id === 'string') this.toolNames.set(b.id, b.name);
@@ -308,12 +274,10 @@ export class Session {
       contextTokens: this.contextTokens,
       contextLimit: this.contextTokens > DEFAULT_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : DEFAULT_CONTEXT_LIMIT,
       lastActivity: Math.max(this.lastLineAt, this.lastSubagentWrite),
-      run: this.run,
       exact: this.hooked,
       permissionTool: this.permission?.tool ?? null,
       error: this.error,
       source: this.source,
-      cacheExpiresAt: this.cacheAt ? this.cacheAt + (this.cache1h ? CACHE_1H_MS : CACHE_5M_MS) : null,
     };
   }
 }

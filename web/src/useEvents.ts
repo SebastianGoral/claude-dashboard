@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { playFinished, playNeedsYou } from './sounds';
-import { isWaiting, type ClosedSession, type Costs, type Loop, type Run, type Session, type Settings } from './types';
+import { isWaiting, type ClosedSession, type Session, type Settings } from './types';
 
 const IN_DESKTOP_APP = navigator.userAgent.includes('Electron');
 
@@ -21,18 +21,15 @@ function useMap<T extends { id: string }>() {
 }
 
 /**
- * The SSE stream of the server (GET /api/events): sessions, loops, workflow runs and settings.
+ * The SSE stream of the server (GET /api/events): sessions, closed sessions and settings.
  * Plays a sound when a known session starts to wait for you. Not in the desktop app, and not while
  * the desktop app is connected: it sends a macOS notification with sound, so this would be a double alert.
  */
 export function useEvents() {
   const sessions = useMap<Session>();
-  const loops = useMap<Loop>();
-  const runs = useMap<Run>();
   const [settings, setSettings] = useState<Settings>({ muted: false, desktopConnected: false, hooksInstalled: false });
   const [connected, setConnected] = useState(false);
   const [closed, setClosed] = useState<ClosedSession[]>([]);
-  const [costs, setCosts] = useState<Costs>({ today: 0, sessions: {}, unknownModels: [] });
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -64,17 +61,12 @@ export function useEvents() {
       statuses.delete(id);
       sessions.remove(id);
     });
-    on<Loop[]>('loops', loops.reset);
-    on<Loop>('loop', loops.set);
-    on<Run[]>('runs', runs.reset);
-    on<Run>('run', runs.set);
     on<Settings>('settings', setSettings);
     on<ClosedSession[]>('closed', setClosed);
-    on<Costs>('costs', setCosts);
     return () => events.close();
     // The setters of useMap are stable in behavior; run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { sessions: sessions.map, loops: loops.map, runs: runs.map, settings, connected, closed, costs };
+  return { sessions: sessions.map, settings, connected, closed };
 }

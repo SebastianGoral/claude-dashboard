@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { RUNS_DIR } from './agent.js';
+import { DASH_DIR } from './files.js';
 
 /** Settings of claude-dash, shared by the web app and the desktop app. */
 export interface DashSettings {
@@ -16,7 +16,7 @@ export interface SettingsView extends DashSettings {
   hooksInstalled: boolean;
 }
 
-const FILE = join(RUNS_DIR, 'settings.json');
+const FILE = join(DASH_DIR, 'settings.json');
 const DEFAULTS: DashSettings = { muted: false };
 
 export interface SettingsStore {
@@ -42,7 +42,7 @@ export class SettingsStore extends EventEmitter {
 
   async update(changes: Partial<DashSettings>): Promise<void> {
     if (typeof changes.muted === 'boolean') this.settings.muted = changes.muted;
-    await mkdir(RUNS_DIR, { recursive: true });
+    await mkdir(DASH_DIR, { recursive: true });
     await writeFile(FILE, JSON.stringify(this.settings, null, 2) + '\n');
     this.emit('change', this.view());
   }

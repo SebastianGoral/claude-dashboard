@@ -15,8 +15,6 @@ export interface Session {
   contextLimit: number;
   /** Epoch milliseconds. */
   lastActivity: number;
-  /** The loop or workflow that runs this session, or null. */
-  run: { kind: 'loop' | 'workflow'; id: string } | null;
   /** True if hooks gave the status. False: a guess from the JSONL file. */
   exact: boolean;
   /** The tool that waits for permission (from hooks), or null. */
@@ -24,8 +22,6 @@ export interface Session {
   /** The latest tool error or API error, until the next success. */
   error: { kind: 'tool' | 'api'; text: string; tool: string | null; at: number } | null;
   source: 'terminal' | 'desktop' | 'vscode' | 'sdk' | 'other';
-  /** When the prompt cache expires (epoch ms, about), or null. */
-  cacheExpiresAt: number | null;
 }
 
 // Same shape as SettingsView in server/src/settings.ts.
@@ -35,78 +31,7 @@ export interface Settings {
   hooksInstalled: boolean;
 }
 
-/** A run session is "your turn" between steps. The run card shows its state, so it never waits for you. */
-export const isWaiting = (s: Session) => !s.run && (s.status === 'your_turn' || s.status === 'needs_permission');
-
-// Same shape as LoopView in server/src/loops.ts.
-export type LoopStatus = 'running' | 'checking' | 'success' | 'failed' | 'stopped';
-
-export interface Loop {
-  id: string;
-  project: string;
-  repo: string;
-  worktree: string;
-  branch: string;
-  task: string;
-  check: string;
-  maxIterations: number;
-  iteration: number;
-  status: LoopStatus;
-  sessionId: string | null;
-  lastCheck: CheckResult | null;
-  error: string | null;
-  startedAt: number;
-  endedAt: number | null;
-}
-
-export interface CheckResult {
-  passed: boolean;
-  output: string;
-  at: number;
-}
-
-// Same shape as RunView and StepView in server/src/workflows.ts.
-export type RunStatus = 'running' | 'success' | 'failed' | 'stopped';
-export type StepStatus = 'waiting' | 'running' | 'checking' | 'done' | 'failed' | 'stopped';
-
-export interface Step {
-  id: string;
-  name: string;
-  access: 'read' | 'edit';
-  status: StepStatus;
-  check: string | null;
-  iteration: number;
-  maxIterations: number;
-  sessionId: string | null;
-  lastCheck: CheckResult | null;
-  answer: string | null;
-  startedAt: number | null;
-  endedAt: number | null;
-}
-
-export interface Run {
-  id: string;
-  workflowId: string;
-  name: string;
-  project: string;
-  repo: string;
-  worktree: string;
-  branch: string;
-  task: string;
-  check: string;
-  status: RunStatus;
-  steps: Step[];
-  error: string | null;
-  startedAt: number;
-  endedAt: number | null;
-}
-
-export interface WorkflowInfo {
-  id: string;
-  name: string;
-  file: string;
-  steps: string[];
-}
+export const isWaiting = (s: Session) => s.status === 'your_turn' || s.status === 'needs_permission';
 
 // Same shapes as server/src/detail.ts and server/src/closed.ts.
 export type Entry =
@@ -129,13 +54,6 @@ export interface Detail {
   id: string;
   entries: Entry[];
   subagents: Subagent[];
-}
-
-// Same shape as CostView in server/src/usage.ts.
-export interface Costs {
-  today: number;
-  sessions: Record<string, number>;
-  unknownModels: string[];
 }
 
 export interface ClosedSession {

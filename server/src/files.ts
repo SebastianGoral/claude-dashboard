@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 
 export const PROJECTS_DIR = join(homedir(), '.claude', 'projects');
+/** Where claude-dash keeps its own files. */
+export const DASH_DIR = join(homedir(), '.claude-dash');
 
 const SESSION_ID = /^[0-9a-f-]{36}$/;
 

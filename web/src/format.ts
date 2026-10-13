@@ -1,9 +1,3 @@
-/** "$0.42", "$12.30", "$0.003". */
-export function dollars(value: number): string {
-  if (value > 0 && value < 0.01) return `$${value.toFixed(3)}`;
-  return `$${value.toFixed(2)}`;
-}
-
 /** "12s", "3m 05s", "2h 07m". */
 export function duration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

@@ -88,15 +88,7 @@ function notify(view: SessionView): void {
 async function main(): Promise<void> {
   await app.whenReady();
   try {
-    await startServer({
-      port: PORT,
-      staticDir: app.isPackaged ? join(process.resourcesPath, 'web') : undefined,
-      workflowsDir: app.isPackaged ? join(process.resourcesPath, 'workflows') : join(__dirname, '../../server/workflows'),
-      // The SDK binary is unpacked next to app.asar (see "asarUnpack" in package.json).
-      claudeExecutable: app.isPackaged
-        ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
-        : undefined,
-    });
+    await startServer({ port: PORT, staticDir: app.isPackaged ? join(process.resourcesPath, 'web') : undefined });
   } catch (err) {
     const busy = (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
     dialog.showErrorBox(

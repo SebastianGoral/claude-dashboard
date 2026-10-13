@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { dollars, duration } from './format';
+import { duration } from './format';
 import type { Session } from './types';
 
 const ERROR_SHOW_MS = 4000;
@@ -22,8 +22,6 @@ function statusLabel(session: Session, elapsed: string): string {
 interface Props {
   session: Session;
   now: number;
-  /** US dollars, with sub-agents. Undefined while the cost is not known yet. */
-  cost: number | undefined;
   onDetails: (id: string) => void;
 }
 
@@ -35,22 +33,11 @@ const SOURCE_LABEL: Record<Session['source'], string | null> = {
   other: null,
 };
 
-/** "Cache 3:12" while the prompt cache lives. Only when the session waits: while it works, each call renews it. */
-function cacheLabel(session: Session, now: number): { text: string; expired: boolean } | null {
-  if (!session.cacheExpiresAt || session.status === 'working' || session.status === 'needs_permission') return null;
-  const left = session.cacheExpiresAt - now;
-  if (left <= 0) return { text: 'Cache expired', expired: true };
-  const s = Math.floor(left / 1000);
-  const time = s >= 3600 ? '60:00' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  return { text: `Cache ${time}`, expired: false };
-}
-
-export function SessionCard({ session, now, cost, onDetails }: Props) {
+export function SessionCard({ session, now, onDetails }: Props) {
   const elapsed = duration(now - session.statusSince);
   const percent = Math.min(100, Math.round((session.contextTokens / session.contextLimit) * 100));
   const level = percent >= 80 ? 'high' : percent >= 50 ? 'mid' : 'low';
   const [error, setError] = useState<string | null>(null);
-  const cache = cacheLabel(session, now);
 
   async function focus() {
     const res = await fetch(`/api/sessions/${session.id}/focus`, { method: 'POST' }).catch(() => null);
@@ -61,7 +48,7 @@ export function SessionCard({ session, now, cost, onDetails }: Props) {
   }
 
   return (
-    <article className={`card ${session.status}${session.status === 'needs_permission' && session.exact ? ' exact' : ''}${session.run ? ' run-session' : ''}`} onClick={focus} title="Open the terminal of this session">
+    <article className={`card ${session.status}${session.status === 'needs_permission' && session.exact ? ' exact' : ''}`} onClick={focus} title="Open the terminal of this session">
       <div className="top">
         <span className="title">{session.title ?? session.project}</span>
         <span className={`badge ${session.status}`}>{statusLabel(session, elapsed)}</span>
@@ -78,7 +65,6 @@ export function SessionCard({ session, now, cost, onDetails }: Props) {
         </button>
       </div>
       <div className="meta">
-        {session.run && <span className="tag">{session.run.kind === 'loop' ? 'Loop' : 'Workflow'}</span>}
         {SOURCE_LABEL[session.source] && <span className={`source ${session.source}`}>{SOURCE_LABEL[session.source]}</span>}
         {session.title && <span className="project">{session.project}</span>}
         {session.branch && <span className="branch">{session.branch}</span>}
@@ -91,12 +77,6 @@ export function SessionCard({ session, now, cost, onDetails }: Props) {
         <span>
           {Math.round(session.contextTokens / 1000)}k / {session.contextLimit / 1000}k · {percent}%
         </span>
-        {cache && (
-          <span className={cache.expired ? 'cache expired' : 'cache'} title="Time until the prompt cache expires (about). After that, the next message costs more.">
-            {cache.text}
-          </span>
-        )}
-        {cost !== undefined && <span className="cost" title="Cost of this session, with sub-agents (estimate from prices.ts)">{dollars(cost)}</span>}
       </div>
       {session.error && (
         <div className="session-error" title={session.error.text}>

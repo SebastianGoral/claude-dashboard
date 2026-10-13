@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { RUNS_DIR } from './agent.js';
+import { DASH_DIR } from './files.js';
 import type { SessionView } from './session.js';
 
 /**
@@ -21,7 +21,7 @@ export interface ClosedSession {
   closedAt: number;
 }
 
-const FILE = join(RUNS_DIR, 'closed.json');
+const FILE = join(DASH_DIR, 'closed.json');
 const PROCESS_DIR = join(homedir(), '.claude', 'sessions');
 const MAX_CLOSED = 50;
 const KEEP_MS = 7 * 24 * 60 * 60_000;
@@ -54,14 +54,8 @@ export class ClosedStore extends EventEmitter {
   /** Sessions seen with a live process. Only these can close by process end. */
   private open = new Set<string>();
 
-  /**
-   * @param viewOf The current view of a session, or null.
-   * @param busy True while a loop or workflow owns the session: its process ends between turns.
-   */
-  constructor(
-    private viewOf: (id: string) => SessionView | null,
-    private busy: (id: string) => boolean,
-  ) {
+  /** @param viewOf The current view of a session, or null. */
+  constructor(private viewOf: (id: string) => SessionView | null) {
     super();
   }
 
@@ -119,13 +113,13 @@ export class ClosedStore extends EventEmitter {
       }
     }
     for (const id of this.open) {
-      if (!live.has(id) && !this.busy(id)) this.close(id);
+      if (!live.has(id)) this.close(id);
     }
   }
 
   private changed(): void {
     this.emit('change', this.list());
-    void mkdir(RUNS_DIR, { recursive: true })
+    void mkdir(DASH_DIR, { recursive: true })
       .then(() => writeFile(FILE, JSON.stringify(this.list(), null, 2) + '\n'))
       .catch((err) => console.error('closed.json write failed:', err));
   }

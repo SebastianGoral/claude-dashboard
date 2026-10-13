@@ -1,9 +1,9 @@
 import type { SessionView, Status } from '../../server/src/session.js';
 import type { SettingsView } from '../../server/src/settings.js';
 
-/** Same rule as isWaiting in web/src/types.ts: loop and workflow sessions never wait for you. */
+/** Same rule as isWaiting in web/src/types.ts. */
 const WAITING: ReadonlySet<Status> = new Set(['your_turn', 'needs_permission']);
-const isWaiting = (view: SessionView) => !view.run && WAITING.has(view.status);
+const isWaiting = (view: SessionView) => WAITING.has(view.status);
 const RETRY_MS = 2_000;
 
 export interface SessionListener {

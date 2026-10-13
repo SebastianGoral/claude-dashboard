@@ -4,14 +4,12 @@ A local dashboard for macOS. It shows all your Claude Code sessions at once: fro
 
 ## Features
 
-- Live list of all sessions, from the terminal, the desktop app, VS Code and the Agent SDK. Three views: grid (default), list and kanban.
+- Live list of all sessions, from the terminal, the desktop app, VS Code and the Agent SDK.
 - A "Waiting for you" section, sounds (with a mute switch), and the waiting count in the tab title, the Dock and the menu bar.
 - Exact "needs permission" status with Claude Code hooks (optional, see below).
-- Tool errors and API errors on the card. Cost per session and today's total. Time until the prompt cache expires.
+- Tool errors and API errors on the card.
 - Detail panel: recent messages, tool calls and sub-agents. Markdown export.
-- "Recently closed" sessions, a History tab, search over all sessions, and a Cmd+K palette to jump to a session.
-- Loops: an agent works on a task until a check command passes.
-- Workflows: steps in order (for example plan → build → review), defined in YAML files.
+- "Recently closed" sessions, a History tab, and search over all sessions.
 
 ## Requirements
 
@@ -110,31 +108,9 @@ Without hooks, the dashboard guesses "needs permission" from the session files. 
 
 To remove the hooks, click **Hooks: on**. Your other hooks stay.
 
-## Loops and workflows
-
-A loop or a workflow runs in a new git worktree and branch: `<repo>/.claude/worktrees/loop-<id>` or `wf-<id>`. Nothing is pushed or committed. The worktree stays when the run ends, so you can look at the changes.
-
-The agent runs without permission prompts, so it may use only these tools:
-
-- Read, Glob and Grep
-- Edit and Write (only in "edit" steps)
-- Bash for the check command, npm, npx, node and git, but not `git push`. "Read" steps may use only git status, diff, log and show, plus the check command.
-
-All other tool calls are refused, and the agent continues.
-
-### Your own workflow
-
-1. Copy `server/workflows/plan-build-review.yaml` to `~/.claude-dash/workflows/my-flow.yaml`.
-2. Edit the steps. The comments in the file explain the fields.
-3. Click **New workflow**. Pick your workflow in the list.
-
-## Prices
-
-The cost is an estimate from `server/src/prices.ts` (Anthropic API prices per million tokens). Edit this file when prices change.
-
 ## Data
 
-claude-dash writes only to `~/.claude-dash/`: settings, the "Recently closed" list, and one log file per loop and workflow. It writes to `~/.claude/settings.json` only when you turn on hooks.
+claude-dash writes only to `~/.claude-dash/`: settings and the "Recently closed" list. It writes to `~/.claude/settings.json` only when you turn on hooks.
 
 ## Ports
 

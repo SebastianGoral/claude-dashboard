@@ -3,7 +3,7 @@ import type { Stats } from 'node:fs';
 import { basename, relative, sep } from 'node:path';
 import chokidar from 'chokidar';
 import { ignoredPath as ignored, PROJECTS_DIR } from './files.js';
-import { Session, type HookEvent, type RunRef, type SessionView } from './session.js';
+import { Session, type HookEvent, type SessionView } from './session.js';
 import { FileTail } from './tail.js';
 
 /** Sessions with no write in this window are hidden. */
@@ -48,13 +48,9 @@ export class SessionStore extends EventEmitter {
   private subagentWrites = new Map<string, number>();
   private earlyHooks = new Map<string, { event: HookEvent; at: number }[]>();
 
-  /** @param runOf Gives the loop or workflow run of a session, or null. */
   /** Hidden sessions (closed ones) are not sent. Set by the server. */
   hidden: (view: SessionView) => boolean = () => false;
 
-  constructor(private runOf: (sessionId: string) => RunRef | null = () => null) {
-    super();
-  }
 
   start(): void {
     chokidar
@@ -122,9 +118,7 @@ export class SessionStore extends EventEmitter {
   }
 
   private view(t: Tracked): SessionView {
-    const view = t.session.view();
-    view.run = this.runOf(view.id) ?? view.run;
-    return view;
+    return t.session.view();
   }
 
   private onFile(path: string, stats: Stats | undefined): void {

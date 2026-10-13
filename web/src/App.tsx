@@ -1,50 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { post } from './api';
-import { CommandPalette } from './CommandPalette';
 import { DetailPanel } from './DetailPanel';
+import { ago } from './format';
 import { History } from './History';
-import { ago, dollars } from './format';
-import { LoopCard, NewLoopForm } from './Loops';
 import { SessionCard } from './SessionCard';
 import { unlockSound } from './sounds';
 import { isWaiting, type ClosedSession, type Session, type Settings, type Status } from './types';
 import { useEvents } from './useEvents';
-import { NewRunForm, RunCard } from './Workflows';
 
 const ORDER: Record<Status, number> = { your_turn: 0, needs_permission: 1, working: 2, idle: 3 };
-
-type View = 'grid' | 'list' | 'kanban';
-const VIEWS: { id: View; label: string }[] = [
-  { id: 'grid', label: 'Grid' },
-  { id: 'list', label: 'List' },
-  { id: 'kanban', label: 'Kanban' },
-];
-const KANBAN: { status: Status; title: string }[] = [
-  { status: 'your_turn', title: 'Your turn' },
-  { status: 'needs_permission', title: 'Needs permission' },
-  { status: 'working', title: 'Working' },
-  { status: 'idle', title: 'Idle' },
-];
-const VIEW_KEY = 'claude-dash.view';
-
-/** The view is a per-browser choice. Storage can be blocked, so every access is guarded. */
-function loadView(): View {
-  try {
-    const v = localStorage.getItem(VIEW_KEY);
-    if (v === 'list' || v === 'kanban') return v;
-  } catch {
-    // Blocked storage: the default view.
-  }
-  return 'grid';
-}
-
-function saveView(view: View): void {
-  try {
-    localStorage.setItem(VIEW_KEY, view);
-  } catch {
-    // Blocked storage: the choice lasts until reload.
-  }
-}
 
 function sortSessions(sessions: Session[]): Session[] {
   return [...sessions].sort((a, b) => {
@@ -75,10 +39,9 @@ interface SectionProps {
   now: number;
   className?: string;
   onDetails: (id: string) => void;
-  costs: Record<string, number>;
 }
 
-function Section({ title, sessions, now, className, onDetails, costs }: SectionProps) {
+function Section({ title, sessions, now, className, onDetails }: SectionProps) {
   return (
     <section className={className}>
       <h2>
@@ -86,7 +49,7 @@ function Section({ title, sessions, now, className, onDetails, costs }: SectionP
       </h2>
       <div className="grid">
         {sessions.map((s) => (
-          <SessionCard key={s.id} session={s} now={now} cost={costs[s.id]} onDetails={onDetails} />
+          <SessionCard key={s.id} session={s} now={now} onDetails={onDetails} />
         ))}
       </div>
     </section>
@@ -150,31 +113,17 @@ function HeaderToggles({ settings }: { settings: Settings }) {
 }
 
 export function App() {
-  const { sessions, loops, runs, settings, connected, closed, costs } = useEvents();
+  const { sessions, settings, connected, closed } = useEvents();
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [palette, setPalette] = useState(false);
-  const [view, setView] = useState<View>(loadView);
   // "#history" opens the tucked-away History tab. The Live view is the default.
   const [tab, setTab] = useState<'live' | 'history'>(location.hash === '#history' ? 'history' : 'live');
+  const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
     const onHash = () => setTab(location.hash === '#history' ? 'history' : 'live');
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-
-  // Cmd+K (Ctrl+K on other systems) opens the command palette.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPalette((open) => !open);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-  const [form, setForm] = useState<'loop' | 'workflow' | null>(null);
-  const [now, setNow] = useState(Date.now());
 
   // Update the "time in status" labels every second.
   useEffect(() => {
@@ -189,11 +138,6 @@ export function App() {
   }, []);
 
   const list = sortSessions([...sessions.values()]);
-  // Loops and workflow runs. Running ones first, then the latest started.
-  const runList = [
-    ...[...loops.values()].map((loop) => ({ kind: 'loop' as const, loop, endedAt: loop.endedAt, startedAt: loop.startedAt })),
-    ...[...runs.values()].map((run) => ({ kind: 'workflow' as const, run, endedAt: run.endedAt, startedAt: run.startedAt })),
-  ].sort((a, b) => Number(a.endedAt !== null) - Number(b.endedAt !== null) || b.startedAt - a.startedAt);
   const waiting = list.filter(isWaiting);
   // Sessions that wait for you are in their own section at the top, not in the project groups.
   const groups = groupByProject(list.filter((s) => !isWaiting(s)));
@@ -213,12 +157,6 @@ export function App() {
       <header>
         <h1>Claude sessions</h1>
         <span className={connected ? 'conn ok' : 'conn'}>{connected ? 'live' : 'disconnected'}</span>
-        <span
-          className="today-cost"
-          title={`Today's cost over all sessions (estimate from server/src/prices.ts)${costs.unknownModels.length ? `. No price for: ${costs.unknownModels.join(', ')}` : ''}`}
-        >
-          Today {dollars(costs.today)}
-        </span>
         <nav className="tabs">
           <a href="#" className={tab === 'live' ? 'active' : ''}>
             Live
@@ -228,87 +166,19 @@ export function App() {
           </a>
         </nav>
         <div className="header-actions">
-          <button type="button" className="header-toggle" onClick={() => setPalette(true)} title="Jump to a session (Cmd+K)">
-            ⌘K
-          </button>
-          <div className="view-switch" role="group" aria-label="View">
-            {VIEWS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                className={view === v.id ? 'header-toggle active' : 'header-toggle'}
-                aria-pressed={view === v.id}
-                onClick={() => {
-                  setView(v.id);
-                  saveView(v.id);
-                }}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
           <HeaderToggles settings={settings} />
-          <button type="button" onClick={() => setForm('loop')} disabled={form !== null}>
-            New loop
-          </button>
-          <button type="button" onClick={() => setForm('workflow')} disabled={form !== null}>
-            New workflow
-          </button>
         </div>
       </header>
       {tab === 'history' && <History onDetails={setDetailId} />}
       {tab === 'live' && (
         <>
-      {form === 'loop' && <NewLoopForm onClose={() => setForm(null)} />}
-      {form === 'workflow' && <NewRunForm onClose={() => setForm(null)} />}
-      {runList.length > 0 && (
-        <section className="loops">
-          <h2>
-            Loops and workflows <span className="count">{runList.length}</span>
-          </h2>
-          <div className="grid">
-            {runList.map((r) => (r.kind === 'loop' ? <LoopCard key={r.loop.id} loop={r.loop} /> : <RunCard key={r.run.id} run={r.run} />))}
-          </div>
-        </section>
-      )}
-      {list.length === 0 && <p className="empty">No active sessions in the last 12 hours.</p>}
-      {view === 'kanban' ? (
-        <div className="kanban">
-          {KANBAN.map((col) => (
-            <Section
-              key={col.status}
-              title={col.title}
-              sessions={list.filter((s) => s.status === col.status)}
-              now={now}
-              className={`kanban-col ${col.status}`}
-              onDetails={setDetailId}
-              costs={costs.sessions}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className={view === 'list' ? 'view-list' : undefined}>
-          {waiting.length > 0 && (
-            <Section title="Waiting for you" sessions={waiting} now={now} className="waiting" onDetails={setDetailId} costs={costs.sessions} />
-          )}
+          {list.length === 0 && <p className="empty">No active sessions in the last 12 hours.</p>}
+          {waiting.length > 0 && <Section title="Waiting for you" sessions={waiting} now={now} className="waiting" onDetails={setDetailId} />}
           {groups.map((g) => (
-            <Section key={g.project} title={g.project} sessions={g.sessions} now={now} onDetails={setDetailId} costs={costs.sessions} />
+            <Section key={g.project} title={g.project} sessions={g.sessions} now={now} onDetails={setDetailId} />
           ))}
-        </div>
-      )}
-      <ClosedSection closed={closed} onDetails={setDetailId} />
+          <ClosedSection closed={closed} onDetails={setDetailId} />
         </>
-      )}
-      {palette && (
-        <CommandPalette
-          sessions={list}
-          closed={closed}
-          onPick={(id) => {
-            setPalette(false);
-            setDetailId(id);
-          }}
-          onClose={() => setPalette(false)}
-        />
       )}
       {detailId && <DetailPanel sessionId={detailId} title={detailTitle(detailId)} onClose={closeDetail} />}
     </main>
