@@ -21,7 +21,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - name: Take the version from the tag
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version -w cli -w desktop
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version -w cli -w desktop
       - run: npm run build -w web
       - name: Build the desktop app (arm64 and x64 zips)
         run: npm run build -w desktop

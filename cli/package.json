@@ -7,7 +7,11 @@
     "type": "git",
     "url": "git+https://github.com/SebastianGoral/claude-dashboard.git"
   },
-  "keywords": ["claude", "claude-code", "dashboard"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "dashboard"
+  ],
   "bin": {
     "claude-dash": "dist/cli.cjs"
   },
