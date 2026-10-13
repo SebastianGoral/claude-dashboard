@@ -18,6 +18,7 @@
   "build": {
     "appId": "dev.claude-dash.app",
     "productName": "claude-dash",
+    "publish": null,
     "directories": {
       "output": "release"
     },
@@ -33,7 +34,16 @@
       }
     ],
     "mac": {
-      "target": "dir",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "claude-dash-${arch}.${ext}",
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns",
       "identity": "-",

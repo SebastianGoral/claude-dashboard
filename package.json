@@ -4,13 +4,15 @@
   "workspaces": [
     "server",
     "web",
-    "desktop"
+    "desktop",
+    "cli"
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
     "dev:desktop": "concurrently -n web,desktop -c green,magenta \"npm run dev -w web\" \"npm run dev -w desktop\"",
     "build:desktop": "npm run build -w web && npm run build -w desktop",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w desktop"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w desktop && npm run typecheck -w cli",
+    "build:cli": "npm run build -w web && npm run build -w cli"
   },
   "devDependencies": {
     "concurrently": "^10.0.6",

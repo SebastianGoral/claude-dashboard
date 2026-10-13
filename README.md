@@ -11,12 +11,47 @@ A local dashboard for macOS. It shows all your Claude Code sessions at once: fro
 - Detail panel: recent messages, tool calls and sub-agents.
 - "Recently closed" sessions, a History tab, and search over all sessions.
 
-## Requirements
+## Install
+
+claude-dash runs only on macOS. Pick one way.
+
+### Desktop app (recommended)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SebastianGoral/claude-dashboard/main/install.sh | bash
+```
+
+The script downloads the newest app for your Mac (Apple Silicon or Intel), puts it in `/Applications` and opens it. Run the same command again to update.
+
+### In the browser (needs Node.js 22)
+
+```sh
+npx claude-dash
+```
+
+The dashboard opens at http://127.0.0.1:4317. Press Ctrl+C to stop it. You get no Dock badge, menu bar icon or notifications.
+
+## Release a new version
+
+1. Push a tag:
+
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+2. The GitHub Action `.github/workflows/release.yml` builds the app zips, makes a GitHub release and publishes the npm package. The version comes from the tag.
+
+The npm step needs the repository secret `NPM_TOKEN` (an npm access token that can publish).
+
+## Develop
+
+### Requirements
 
 - macOS
 - Node.js 22
 
-## Run in the browser
+### Run in the browser
 
 ```sh
 npm install

@@ -1,0 +1,30 @@
+{
+  "name": "claude-dash",
+  "version": "0.1.0",
+  "description": "A local dashboard for macOS that shows all your Claude Code sessions at once.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SebastianGoral/claude-dashboard.git"
+  },
+  "keywords": ["claude", "claude-code", "dashboard"],
+  "bin": {
+    "claude-dash": "dist/cli.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node22 --banner:js=\"#!/usr/bin/env node\" --outfile=dist/cli.cjs && rm -rf dist/web && cp -R ../web/dist dist/web && cp ../README.md ../LICENSE .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
