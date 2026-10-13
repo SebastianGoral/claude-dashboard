@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { get, post } from './api';
 import { DetailPanel } from './DetailPanel';
 import { ago } from './format';
@@ -10,6 +10,33 @@ import { isWaiting, type ClosedSession, type Folder, type Session, type Settings
 import { useEvents } from './useEvents';
 
 const ORDER: Record<Status, number> = { your_turn: 0, needs_permission: 1, working: 2, idle: 3 };
+
+type View = 'groups' | 'kanban';
+const KANBAN: { status: Status; title: string }[] = [
+  { status: 'your_turn', title: 'Your turn' },
+  { status: 'needs_permission', title: 'Needs permission' },
+  { status: 'working', title: 'Working' },
+  { status: 'idle', title: 'Idle' },
+];
+const VIEW_KEY = 'claude-dash.view';
+
+/** The view is a per-browser choice. Storage can be blocked, so every access is guarded. */
+function loadView(): View {
+  try {
+    if (localStorage.getItem(VIEW_KEY) === 'kanban') return 'kanban';
+  } catch {
+    // Blocked storage: the default view.
+  }
+  return 'groups';
+}
+
+function saveView(view: View): void {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // Blocked storage: the choice lasts until reload.
+  }
+}
 
 function sortSessions(sessions: Session[]): Session[] {
   return [...sessions].sort((a, b) => {
@@ -144,9 +171,28 @@ function NewSessionMenu({ folders, onOpen, onChange }: { folders: Folder[]; onOp
   );
 }
 
-/** Mute and hooks. Both are server settings, so the web app and the desktop app share them. */
-function HeaderToggles({ settings }: { settings: Settings }) {
+/** Hooks, sound and "New in" behind a menu button. All are server settings, so the web app and the desktop app share them. */
+function SettingsMenu({ settings }: { settings: Settings }) {
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // A click outside the menu or Esc closes it.
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   async function toggleHooks() {
     if (settings.hooksInstalled) {
@@ -162,23 +208,53 @@ function HeaderToggles({ settings }: { settings: Settings }) {
   }
 
   return (
-    <>
-      <button type="button" className="header-toggle" onClick={toggleHooks} title="Claude Code hooks give the exact status">
-        Hooks: {settings.hooksInstalled ? 'on' : 'off'}
+    <div className="settings-menu" ref={ref}>
+      <button type="button" className="header-toggle" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Settings" title="Settings">
+        ☰
       </button>
-      <button type="button" className="header-toggle" onClick={() => post('/api/settings', { muted: !settings.muted })}>
-        Sound: {settings.muted ? 'off' : 'on'}
-      </button>
-      <button
-        type="button"
-        className="header-toggle"
-        onClick={() => post('/api/settings', { newSessionApp: settings.newSessionApp === 'terminal' ? 'desktop' : 'terminal' })}
-        title="The app for a new session"
-      >
-        New in: {settings.newSessionApp === 'terminal' ? 'Terminal' : 'Desktop'}
-      </button>
+      {open && (
+        <div className="settings-panel">
+          <button type="button" className="header-toggle" onClick={toggleHooks} title="Claude Code hooks give the exact status">
+            Hooks: {settings.hooksInstalled ? 'on' : 'off'}
+          </button>
+          <button type="button" className="header-toggle" onClick={() => post('/api/settings', { muted: !settings.muted })}>
+            Sound: {settings.muted ? 'off' : 'on'}
+          </button>
+          <button
+            type="button"
+            className="header-toggle"
+            onClick={() => post('/api/settings', { newSessionApp: settings.newSessionApp === 'terminal' ? 'desktop' : 'terminal' })}
+            title="The app for a new session"
+          >
+            New in: {settings.newSessionApp === 'terminal' ? 'Terminal' : 'Desktop'}
+          </button>
+        </div>
+      )}
       {error && <span className="error">{error}</span>}
-    </>
+    </div>
+  );
+}
+
+/** Groups (by project) or Kanban (by status). */
+function ViewSwitch({ view, onChange }: { view: View; onChange: (view: View) => void }) {
+  const views: { id: View; label: string }[] = [
+    { id: 'groups', label: 'Groups' },
+    { id: 'kanban', label: 'Kanban' },
+  ];
+  return (
+    <div className="view-switch" role="group" aria-label="View">
+      {views.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          className={view === v.id ? 'header-toggle active' : 'header-toggle'}
+          aria-pressed={view === v.id}
+          onClick={() => onChange(v.id)}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -190,6 +266,11 @@ export function App() {
   // "#history" and "#cleanup" open the other tabs. The Live view is the default.
   const [tab, setTab] = useState(tabOf);
   const [now, setNow] = useState(Date.now());
+  const [view, setView] = useState<View>(loadView);
+  const changeView = (v: View) => {
+    setView(v);
+    saveView(v);
+  };
 
   useEffect(() => {
     const onHash = () => setTab(tabOf());
@@ -253,8 +334,9 @@ export function App() {
           </a>
         </nav>
         <div className="header-actions">
+          {tab === 'live' && <ViewSwitch view={view} onChange={changeView} />}
           <NewSessionMenu folders={folders} onOpen={openFolder} onChange={loadFolders} />
-          <HeaderToggles settings={settings} />
+          <SettingsMenu settings={settings} />
         </div>
       </header>
       {newError && <p className="error">{newError}</p>}
@@ -263,20 +345,37 @@ export function App() {
       {tab === 'live' && (
         <>
           {list.length === 0 && <p className="empty">No active sessions in the last 12 hours.</p>}
-          {waiting.length > 0 && <Section title="Waiting for you" sessions={waiting} now={now} className="waiting" onDetails={setDetailId} />}
-          {groups.map((g) => {
-            const folder = folderOf(g.project);
-            return (
-              <Section
-                key={g.project}
-                title={g.project}
-                sessions={g.sessions}
-                now={now}
-                onDetails={setDetailId}
-                onNew={folder ? () => openFolder(folder) : undefined}
-              />
-            );
-          })}
+          {view === 'kanban' ? (
+            <div className="kanban">
+              {KANBAN.map((col) => (
+                <Section
+                  key={col.status}
+                  title={col.title}
+                  sessions={list.filter((s) => s.status === col.status)}
+                  now={now}
+                  className={`kanban-col ${col.status}`}
+                  onDetails={setDetailId}
+                />
+              ))}
+            </div>
+          ) : (
+            <>
+              {waiting.length > 0 && <Section title="Waiting for you" sessions={waiting} now={now} className="waiting" onDetails={setDetailId} />}
+              {groups.map((g) => {
+                const folder = folderOf(g.project);
+                return (
+                  <Section
+                    key={g.project}
+                    title={g.project}
+                    sessions={g.sessions}
+                    now={now}
+                    onDetails={setDetailId}
+                    onNew={folder ? () => openFolder(folder) : undefined}
+                  />
+                );
+              })}
+            </>
+          )}
           <ClosedSection closed={closed} onDetails={setDetailId} />
         </>
       )}

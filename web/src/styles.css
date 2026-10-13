@@ -669,3 +669,76 @@ header {
 .worktree-list .history-item {
   cursor: default;
 }
+
+/* Settings behind the ☰ button. */
+.settings-menu {
+  position: relative;
+}
+.settings-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+}
+.settings-panel button {
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* "Groups / Kanban" switch. */
+.view-switch {
+  display: flex;
+}
+.view-switch button {
+  border-radius: 0;
+}
+.view-switch button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.view-switch button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.view-switch button + button {
+  border-left: none;
+}
+.header-toggle.active {
+  color: var(--text);
+  background: var(--bar);
+}
+
+/* Kanban view: one column per status. Columns wrap on small screens. */
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+.kanban .grid {
+  grid-template-columns: 1fr;
+}
+.kanban-col {
+  background: var(--bar);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 0;
+  min-width: 0;
+}
+.kanban-col.your_turn h2 {
+  color: var(--your-turn);
+}
+.kanban-col.needs_permission h2 {
+  color: var(--maybe);
+}
+.kanban-col.working h2 {
+  color: var(--working);
+}
