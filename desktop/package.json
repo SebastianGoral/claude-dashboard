@@ -35,6 +35,7 @@
     "mac": {
       "target": "dir",
       "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns",
       "identity": "-",
       "hardenedRuntime": false,
       "extendInfo": {

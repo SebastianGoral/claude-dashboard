@@ -86,6 +86,15 @@ async function readHead(path: string): Promise<string[]> {
   }
 }
 
+/** The folder where the session started: the first cwd in the file. Claude Code finds the session from there. Null if none. */
+export async function sessionCwd(path: string): Promise<string | null> {
+  for (const raw of await readHead(path)) {
+    const cwd = readLine(raw)?.cwd;
+    if (cwd) return cwd;
+  }
+  return null;
+}
+
 /** Runs fn on all items, at most `limit` at a time. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);

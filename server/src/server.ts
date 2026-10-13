@@ -6,8 +6,8 @@ import { findSessionFile } from './files.js';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, resolve } from 'node:path';
-import { listFolders, listHistory, search } from './history.js';
-import { focusTerminal, openNewSession } from './focus.js';
+import { listFolders, listHistory, search, sessionCwd } from './history.js';
+import { focusTerminal, openNewSession, resumeSession } from './focus.js';
 import { liveProcesses } from './processes.js';
 import { hooksInstalled, installHooks, removeHooks } from './hooks.js';
 import { LiveList } from './livelist.js';
@@ -172,6 +172,28 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
     return { ok: true };
   });
 
+  // Resumes an ended session in a new Terminal.app window (claude --resume). A running session gets the focus instead.
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/resume', async (req, reply) => {
+    const id = req.params.id;
+    try {
+      if ((await liveProcesses()).has(id)) {
+        const err = await focusTerminal(id);
+        return err ? reply.code(409).send({ error: err }) : { ok: true };
+      }
+      const file = store.pathOf(id) ?? (await findSessionFile(id));
+      if (!file) return reply.code(404).send({ error: 'Session file not found' });
+      const cwd = await sessionCwd(file);
+      if (!cwd) return reply.code(404).send({ error: 'The session has no folder' });
+      if (!(await stat(cwd).then((s) => s.isDirectory(), () => false))) return reply.code(409).send({ error: `The folder no longer exists: ${cwd}` });
+      await resumeSession(cwd, id);
+      live.resumed(id);
+      return { ok: true };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ error: 'Could not resume the session' });
+    }
+  });
+
   // Moves the session file to the macOS Trash. Not while the session has a live process.
   app.post<{ Params: { id: string } }>('/api/sessions/:id/delete', async (req, reply) => {
     const id = req.params.id;
@@ -207,7 +229,11 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
   });
 
   // All session files, the newest first.
-  app.get('/api/history', async () => listHistory());
+  // running: the session has a live claude process now. Not cached, so it is always current.
+  app.get('/api/history', async () => {
+    const [items, live] = await Promise.all([listHistory(), liveProcesses()]);
+    return items.map((item) => ({ ...item, running: live.has(item.id) }));
+  });
 
   app.get<{ Querystring: { q?: string } }>('/api/search', async (req) => search(req.query.q ?? ''));
 

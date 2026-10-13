@@ -70,3 +70,17 @@ export async function openNewSession(folder: string, app: 'terminal' | 'desktop'
   }
   await run('osascript', ['-e', NEW_SESSION_SCRIPT, folder]);
 }
+
+// Opens a new Terminal.app window in the folder and resumes the session. Both arguments are quoted for the shell.
+const RESUME_SCRIPT = `
+on run argv
+  set folderPath to item 1 of argv
+  set sessionId to item 2 of argv
+  tell application "Terminal" to do script "cd " & quoted form of folderPath & " && claude --resume " & quoted form of sessionId
+  tell application "System Events" to set frontmost of process "Terminal" to true
+end run`;
+
+/** Resumes an ended session in Terminal.app. `folder` must be the folder where the session started. */
+export async function resumeSession(folder: string, sessionId: string): Promise<void> {
+  await run('osascript', ['-e', RESUME_SCRIPT, folder, sessionId]);
+}

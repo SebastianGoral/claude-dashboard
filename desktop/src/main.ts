@@ -87,6 +87,8 @@ function notify(view: SessionView): void {
 
 async function main(): Promise<void> {
   await app.whenReady();
+  // The built app takes its icon from icon.icns. In dev (electron .) the Dock shows the Electron icon without this.
+  if (!app.isPackaged) app.dock?.setIcon(nativeImage.createFromPath(join(__dirname, '../assets/icon.png')));
   try {
     await startServer({ port: PORT, staticDir: app.isPackaged ? join(process.resourcesPath, 'web') : undefined });
   } catch (err) {

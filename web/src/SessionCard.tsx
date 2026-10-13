@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { post } from './api';
 import { duration } from './format';
 import type { Session } from './types';
+import { useCloseOutside } from './useCloseOutside';
 
 const ERROR_SHOW_MS = 4000;
 /** The "Sure? Kill" button goes back to "Kill" after this time. */
@@ -42,6 +43,9 @@ export function SessionCard({ session, now, onDetails }: Props) {
   const level = percent >= 80 ? 'high' : percent >= 50 ? 'mid' : 'low';
   const [error, setError] = useState<string | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useCloseOutside(menuRef, menuOpen, () => setMenuOpen(false));
 
   function showError(text: string) {
     setError(text);
@@ -60,54 +64,71 @@ export function SessionCard({ session, now, onDetails }: Props) {
       <div className="top">
         <span className="title">{session.title ?? session.project}</span>
         <span className={`badge ${session.status}`}>{statusLabel(session, elapsed)}</span>
-        <button
-          type="button"
-          className="details-button"
-          title="Show messages, tool calls and sub-agents"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDetails(session.id);
-          }}
-        >
-          Details
-        </button>
-        <button
-          type="button"
-          className="details-button"
-          title="Hide this session. It moves to Recently closed. New activity shows it again."
-          onClick={async (e) => {
-            e.stopPropagation();
-            const err = await post(`/api/sessions/${session.id}/hide`);
-            if (err) showError(err);
-          }}
-        >
-          Hide
-        </button>
-        {/* Only Terminal sessions: in the desktop app the process can be the app itself. */}
-        {session.source === 'terminal' && (
+        {/* A click in the menu must not open the terminal. */}
+        <div className="card-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            className={`details-button${confirmKill ? ' confirm' : ''}`}
-            title={
-              confirmKill
-                ? `Click again to stop the claude process${session.status === 'working' ? '. It is working now.' : '.'}`
-                : 'Stop the claude process and hide this session. The Terminal tab stays open.'
-            }
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (!confirmKill) {
-                setConfirmKill(true);
-                setTimeout(() => setConfirmKill(false), CONFIRM_MS);
-                return;
-              }
-              setConfirmKill(false);
-              const err = await post(`/api/sessions/${session.id}/kill`);
-              if (err) showError(err);
-            }}
+            className="details-button"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-expanded={menuOpen}
+            aria-label="Actions"
+            title="Details, Hide, Kill"
           >
-            {confirmKill ? (session.status === 'working' ? 'Working! Kill?' : 'Sure? Kill') : 'Kill'}
+            ⋯
           </button>
-        )}
+          {menuOpen && (
+            <div className="card-menu-panel">
+              <button
+                type="button"
+                className="details-button"
+                title="Show messages, tool calls and sub-agents"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDetails(session.id);
+                }}
+              >
+                Details
+              </button>
+              <button
+                type="button"
+                className="details-button"
+                title="Hide this session. It moves to Recently closed. New activity shows it again."
+                onClick={async () => {
+                  setMenuOpen(false);
+                  const err = await post(`/api/sessions/${session.id}/hide`);
+                  if (err) showError(err);
+                }}
+              >
+                Hide
+              </button>
+              {/* Only Terminal sessions: in the desktop app the process can be the app itself. */}
+              {session.source === 'terminal' && (
+                <button
+                  type="button"
+                  className={`details-button${confirmKill ? ' confirm' : ''}`}
+                  title={
+                    confirmKill
+                      ? `Click again to stop the claude process${session.status === 'working' ? '. It is working now.' : '.'}`
+                      : 'Stop the claude process and hide this session. The Terminal tab stays open.'
+                  }
+                  onClick={async () => {
+                    if (!confirmKill) {
+                      setConfirmKill(true);
+                      setTimeout(() => setConfirmKill(false), CONFIRM_MS);
+                      return;
+                    }
+                    setConfirmKill(false);
+                    setMenuOpen(false);
+                    const err = await post(`/api/sessions/${session.id}/kill`);
+                    if (err) showError(err);
+                  }}
+                >
+                  {confirmKill ? (session.status === 'working' ? 'Working! Kill?' : 'Sure? Kill') : 'Kill'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="meta">
         {SOURCE_LABEL[session.source] && <span className={`source ${session.source}`}>{SOURCE_LABEL[session.source]}</span>}

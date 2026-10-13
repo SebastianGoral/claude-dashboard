@@ -7,6 +7,7 @@ import { Worktrees } from './Worktrees';
 import { SessionCard } from './SessionCard';
 import { unlockSound } from './sounds';
 import { isWaiting, type ClosedSession, type Folder, type Session, type Settings, type Status } from './types';
+import { useCloseOutside } from './useCloseOutside';
 import { useEvents } from './useEvents';
 
 const ORDER: Record<Status, number> = { your_turn: 0, needs_permission: 1, working: 2, idle: 3 };
@@ -93,6 +94,7 @@ function Section({ title, sessions, now, className, onDetails, onNew }: SectionP
 
 /** Sessions whose Claude Code process ended. Folded by default. */
 function ClosedSection({ closed, onDetails }: { closed: ClosedSession[]; onDetails: (id: string) => void }) {
+  const [error, setError] = useState<string | null>(null);
   if (closed.length === 0) return null;
   return (
     <details className="closed">
@@ -117,17 +119,29 @@ function ClosedSection({ closed, onDetails }: { closed: ClosedSession[]; onDetai
                 show
               </button>
             )}
+            <button
+              type="button"
+              className="details-button"
+              onClick={async () => setError(await post(`/api/sessions/${c.id}/resume`))}
+              title="Open a new Terminal window with claude --resume"
+            >
+              Resume
+            </button>
           </li>
         ))}
       </ul>
+      {error && <p className="error">{error}</p>}
     </details>
   );
 }
 
 /** The "New session" menu: all project folders, with hide, and a field to add a folder. */
 function NewSessionMenu({ folders, onOpen, onChange }: { folders: Folder[]; onOpen: (path: string) => void; onChange: () => void }) {
+  const [open, setOpen] = useState(false);
   const [path, setPath] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDetailsElement>(null);
+  useCloseOutside(ref, open, () => setOpen(false));
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -143,7 +157,15 @@ function NewSessionMenu({ folders, onOpen, onChange }: { folders: Folder[]; onOp
   }
 
   return (
-    <details className="new-menu" onToggle={(e) => (e.currentTarget.open ? onChange() : undefined)}>
+    <details
+      className="new-menu"
+      ref={ref}
+      open={open}
+      onToggle={(e) => {
+        setOpen(e.currentTarget.open);
+        if (e.currentTarget.open) onChange();
+      }}
+    >
       <summary className="header-toggle">New session</summary>
       <div className="new-menu-panel">
         <ul>
@@ -177,22 +199,7 @@ function SettingsMenu({ settings }: { settings: Settings }) {
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  // A click outside the menu or Esc closes it.
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  useCloseOutside(ref, open, () => setOpen(false));
 
   async function toggleHooks() {
     if (settings.hooksInstalled) {

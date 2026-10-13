@@ -87,6 +87,8 @@ export interface HistoryItem {
   firstPrompt: string;
   lastActivity: number;
   size: number;
+  /** The session has a live claude process now. */
+  running: boolean;
 }
 
 export interface SearchHit {

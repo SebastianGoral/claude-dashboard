@@ -103,8 +103,18 @@ export function History({ onDetails }: { onDetails: (id: string) => void }) {
                     <span className="project">{h.project}</span>
                     {h.branch && <span className="branch">{h.branch}</span>}
                     <span className="closed-time">{ago(h.lastActivity)}</span>
+                    <span className={`run-state${h.running ? ' running' : ''}`}>{h.running ? 'Running' : 'Closed'}</span>
                   </span>
-                  {h.title && h.firstPrompt && <span className="history-snippet">{h.firstPrompt}</span>}
+                  {/* Always a second line, so all rows have one height. Without a title, the prompt is already the title. */}
+                  <span className="history-snippet">{(h.title && h.firstPrompt) || '\u00a0'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="details-button"
+                  onClick={async () => setError(await post(`/api/sessions/${h.id}/resume`))}
+                  title={h.running ? 'Show the terminal of this session' : 'Open a new Terminal window with claude --resume'}
+                >
+                  {h.running ? 'Focus' : 'Resume'}
                 </button>
                 <button type="button" className="details-button" onClick={() => remove(h)} title="Move the session file to the Trash">
                   Delete

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { get, post } from './api';
 import type { Worktree } from './types';
 
-const changesLabel = (w: Worktree) =>
-  w.changes === null ? 'folder gone' : w.changes === 0 ? 'clean' : `${w.changes} uncommitted file${w.changes === 1 ? '' : 's'}`;
+/** Why Remove can fail, or null for a clean worktree. */
+const stateLabel = (w: Worktree): string | null =>
+  w.sessionId ? 'live session' : w.changes === null ? 'folder gone' : w.changes === 0 ? null : `${w.changes} uncommitted file${w.changes === 1 ? '' : 's'}`;
 
 /** Git worktrees under .claude/worktrees. Remove keeps the branch. Git refuses a worktree with changes. */
 export function Worktrees() {
@@ -43,7 +44,7 @@ export function Worktrees() {
                 <span className="title">{w.path.split('/').pop()}</span>
                 <span className="project">{w.repo.split('/').pop()}</span>
                 {w.branch && <span className="branch">{w.branch}</span>}
-                <span className="closed-time">{w.sessionId ? 'live session' : changesLabel(w)}</span>
+                {stateLabel(w) && <span className="closed-time">{stateLabel(w)}</span>}
               </span>
               <span className="history-snippet">{w.path}</span>
             </div>

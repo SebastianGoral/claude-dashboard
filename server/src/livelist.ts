@@ -55,6 +55,9 @@ export class LiveList extends EventEmitter {
   private closed = new Map<string, ClosedSession>();
   /** Sessions seen with a live process. Only these can close by process end. */
   private open = new Set<string>();
+  /** Sessions checked once for a process that ended while the dashboard was off. */
+  private checked = new Set<string>();
+  private startedAt: number;
   private file: string;
   private liveProcesses: () => Promise<Map<string, ProcessInfo>>;
   private now: () => number;
@@ -64,6 +67,7 @@ export class LiveList extends EventEmitter {
     this.file = options.file ?? FILE;
     this.liveProcesses = options.liveProcesses ?? (() => liveProcesses());
     this.now = options.now ?? Date.now;
+    this.startedAt = this.now();
   }
 
   /** Loads the closed list and starts the process poll. */
@@ -129,6 +133,15 @@ export class LiveList extends EventEmitter {
     if (this.closed.delete(id)) this.changed();
   }
 
+  /** The user resumed a closed session. Its process opens it again, also if it was hidden. */
+  resumed(id: string): void {
+    const c = this.closed.get(id);
+    if (c?.hidden) {
+      c.hidden = false;
+      this.changed();
+    }
+  }
+
   /** Forgets a session, for example after its file was deleted. */
   forget(id: string): void {
     this.open.delete(id);
@@ -150,6 +163,21 @@ export class LiveList extends EventEmitter {
     }
     for (const id of this.open) {
       if (!live.has(id)) this.close(id);
+    }
+    this.closeEnded(live);
+  }
+
+  /**
+   * Closes sessions whose process ended while the dashboard was off. Once per session.
+   * Only last activity before the start: a newer session (for example after /clear) can still miss its process file.
+   * Only Terminal and desktop app sessions: other sources may write no process file.
+   */
+  private closeEnded(live: Map<string, ProcessInfo>): void {
+    for (const view of this.all.values()) {
+      if (this.checked.has(view.id)) continue;
+      this.checked.add(view.id);
+      const known = view.source === 'terminal' || view.source === 'desktop';
+      if (known && view.lastActivity < this.startedAt && !live.has(view.id)) this.close(view.id);
     }
   }
 
