@@ -3,7 +3,7 @@ import { rename, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { findProcess } from './focus.js';
+import { findProcess, isAlive, isSameProcess, type ProcessInfo } from './processes.js';
 
 /** Cleanup: stop session processes, move session files to the Trash, list and remove git worktrees under .claude/worktrees. */
 
@@ -30,15 +30,6 @@ export async function trashSession(file: string): Promise<void> {
 
 const KILL_WAIT_MS = 3000;
 
-const isAlive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 async function waitForExit(pid: number, ms: number): Promise<boolean> {
   for (const end = Date.now() + ms; Date.now() < end; ) {
     if (!isAlive(pid)) return true;
@@ -56,10 +47,7 @@ export async function killSession(sessionId: string): Promise<string | null> {
   const info = await findProcess(sessionId);
   if (info === null) return 'No running claude process for this session';
   if (info.entrypoint !== 'cli') return 'Kill works only for Terminal sessions';
-  // macOS can give a dead process's pid to a new program. Claude Code stores the start time in UTC.
-  const { stdout } = await run('ps', ['-o', 'lstart=', '-p', String(info.pid)], { env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' } }).catch(() => ({ stdout: '' }));
-  const norm = (text: string) => text.trim().replace(/\s+/g, ' ');
-  if (!info.procStart || norm(stdout) !== norm(info.procStart)) return 'The pid now belongs to a different process';
+  if (!(await isSameProcess(info))) return 'The pid now belongs to a different process';
 
   process.kill(info.pid, 'SIGTERM');
   if (await waitForExit(info.pid, KILL_WAIT_MS)) return null;
@@ -97,9 +85,9 @@ async function worktreesOf(folder: string): Promise<Omit<Worktree, 'changes' | '
 
 /**
  * All worktrees under .claude/worktrees of the given folders.
- * @param live Live sessions: session id → cwd.
+ * @param live Live processes by session id.
  */
-export async function listWorktrees(folders: string[], live: Map<string, string>): Promise<Worktree[]> {
+export async function listWorktrees(folders: string[], live: Map<string, ProcessInfo>): Promise<Worktree[]> {
   const found = new Map<string, Omit<Worktree, 'changes' | 'sessionId'>>();
   for (const list of await Promise.all(folders.map(worktreesOf))) for (const w of list) found.set(w.path, w);
   return Promise.all(
@@ -107,7 +95,7 @@ export async function listWorktrees(folders: string[], live: Map<string, string>
       const changes = (await exists(w.path))
         ? (await git(w.path, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length
         : null;
-      const sessionId = [...live].find(([, cwd]) => cwd === w.path || cwd.startsWith(`${w.path}/`))?.[0] ?? null;
+      const sessionId = [...live.values()].find(({ cwd }) => cwd === w.path || cwd.startsWith(`${w.path}/`))?.sessionId ?? null;
       return { ...w, changes, sessionId };
     }),
   );

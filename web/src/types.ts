@@ -43,7 +43,7 @@ export interface Folder {
 
 export const isWaiting = (s: Session) => s.status === 'your_turn' || s.status === 'needs_permission';
 
-// Same shapes as server/src/detail.ts and server/src/closed.ts.
+// Same shapes as server/src/detail.ts and server/src/livelist.ts.
 export type Entry =
   | { kind: 'user' | 'assistant'; at: number; text: string }
   | { kind: 'tool'; at: number; id: string; tool: string; input: string; result: string | null; isError: boolean; doneAt: number | null };

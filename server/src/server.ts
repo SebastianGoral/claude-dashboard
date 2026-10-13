@@ -1,7 +1,6 @@
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { killSession, listWorktrees, removeWorktree, trashSession } from './cleanup.js';
-import { ClosedStore, liveSessions } from './closed.js';
 import { readDetail } from './detail.js';
 import { findSessionFile } from './files.js';
 import { stat } from 'node:fs/promises';
@@ -9,7 +8,9 @@ import { homedir } from 'node:os';
 import { isAbsolute, resolve } from 'node:path';
 import { exportMarkdown, listFolders, listHistory, search } from './history.js';
 import { focusTerminal, openNewSession } from './focus.js';
+import { liveProcesses } from './processes.js';
 import { hooksInstalled, installHooks, removeHooks } from './hooks.js';
+import { LiveList } from './livelist.js';
 import type { HookEvent } from './session.js';
 import { SettingsStore } from './settings.js';
 import { SessionStore } from './watcher.js';
@@ -27,13 +28,10 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 /** Starts the session watcher and the HTTP server. Resolves when the server listens. */
 export async function startServer({ port, staticDir }: ServerOptions): Promise<void> {
   const store = new SessionStore();
-  const closed = new ClosedStore((id) => store.get(id));
-  store.hidden = (view) => {
-    closed.reopenIfActive(view);
-    return closed.isClosed(view);
-  };
-  closed.on('change', () => store.syncHidden());
-  await closed.start();
+  const live = new LiveList();
+  store.on('view', (view) => live.update(view));
+  store.on('remove', (id) => live.drop(id));
+  await live.start();
   store.start();
   const settings = new SettingsStore();
   await settings.load();
@@ -54,17 +52,17 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
     });
     const send = (event: string) => (data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-    send('snapshot')(store.views());
-    send('closed')(closed.list());
+    send('snapshot')(live.views());
+    send('closed')(live.closedList());
     // The desktop app connects with ?client=desktop. While it is connected, it gives the alerts.
     const desktop = req.query.client === 'desktop';
     if (desktop) settings.desktop(1);
     send('settings')(settings.view());
     const listeners: [{ off(e: string, fn: (d: any) => void): unknown }, string, (d: any) => void][] = [
-      [store, 'upsert', send('upsert')],
-      [store, 'remove', send('remove')],
+      [live, 'upsert', send('upsert')],
+      [live, 'remove', send('remove')],
+      [live, 'closed', send('closed')],
       [settings, 'change', send('settings')],
-      [closed, 'change', send('closed')],
     ];
     for (const [emitter, event, fn] of listeners) (emitter as any).on(event, fn);
     const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
@@ -83,7 +81,7 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
       return reply.code(400).send({ error: 'session_id and hook_event_name are required' });
     }
     store.applyHook(event);
-    if (event.hook_event_name === 'SessionEnd') closed.close(event.session_id);
+    if (event.hook_event_name === 'SessionEnd') live.close(event.session_id);
     return {};
   });
 
@@ -167,7 +165,7 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
 
   // Hides a session from the live list. It moves to "Recently closed". New activity shows it again.
   app.post<{ Params: { id: string } }>('/api/sessions/:id/hide', async (req, reply) => {
-    if (!closed.hide(req.params.id)) return reply.code(404).send({ error: 'Session not found' });
+    if (!live.hide(req.params.id)) return reply.code(404).send({ error: 'Session not found' });
     return { ok: true };
   });
 
@@ -175,24 +173,24 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
   app.post<{ Params: { id: string } }>('/api/sessions/:id/kill', async (req, reply) => {
     const err = await killSession(req.params.id).catch((e) => `Could not stop the process: ${message(e)}`);
     if (err) return reply.code(409).send({ error: err });
-    closed.hide(req.params.id);
+    live.hide(req.params.id);
     return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/unhide', async (req) => {
-    closed.unhide(req.params.id);
+    live.unhide(req.params.id);
     return { ok: true };
   });
 
   // Moves the session file to the macOS Trash. Not while the session has a live process.
   app.post<{ Params: { id: string } }>('/api/sessions/:id/delete', async (req, reply) => {
     const id = req.params.id;
-    if ((await liveSessions()).has(id)) return reply.code(409).send({ error: 'The session still runs. Close it first.' });
+    if ((await liveProcesses()).has(id)) return reply.code(409).send({ error: 'The session still runs. Close it first.' });
     const file = store.pathOf(id) ?? (await findSessionFile(id));
     if (!file) return reply.code(404).send({ error: 'Session file not found' });
     try {
       await trashSession(file);
-      closed.forget(id);
+      live.forget(id);
       return { ok: true };
     } catch (err) {
       req.log.error(err);
@@ -201,7 +199,7 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
   });
 
   // Worktrees under .claude/worktrees of all known folders, hidden folders too.
-  const worktrees = async () => listWorktrees((await listFolders(settings.view().extraFolders, [])).map((f) => f.path), await liveSessions());
+  const worktrees = async () => listWorktrees((await listFolders(settings.view().extraFolders, [])).map((f) => f.path), await liveProcesses());
   app.get('/api/worktrees', worktrees);
 
   // Removes a worktree from the list. Git refuses if it has changes. The branch stays.

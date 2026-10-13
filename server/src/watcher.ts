@@ -33,12 +33,14 @@ interface Tracked {
   queue: Promise<void>;
   /** The JSONL file. */
   path: string;
-  /** True after a "remove" was sent because the session is hidden (closed). */
-  hidden: boolean;
 }
 
+/**
+ * Watches the session files and keeps one Session per file. Sends every new view ("view") and every
+ * session it stops tracking ("remove"). Which sessions the dashboard shows is up to LiveList.
+ */
 export interface SessionStore {
-  on(event: 'upsert', fn: (view: SessionView) => void): this;
+  on(event: 'view', fn: (view: SessionView) => void): this;
   on(event: 'remove', fn: (id: string) => void): this;
 }
 
@@ -47,10 +49,6 @@ export class SessionStore extends EventEmitter {
   /** Latest sub-agent write per session id. Kept apart, because a sub-agent file can appear before its session. */
   private subagentWrites = new Map<string, number>();
   private earlyHooks = new Map<string, { event: HookEvent; at: number }[]>();
-
-  /** Hidden sessions (closed ones) are not sent. Set by the server. */
-  hidden: (view: SessionView) => boolean = () => false;
-
 
   start(): void {
     chokidar
@@ -66,41 +64,13 @@ export class SessionStore extends EventEmitter {
     setInterval(() => this.refreshAll(), REFRESH_INTERVAL_MS);
   }
 
-  views(): SessionView[] {
-    return [...this.tracked.values()].map((t) => this.view(t)).filter((v) => !this.hidden(v));
-  }
-
-  /** The view of a tracked session, also when it is hidden. */
-  get(sessionId: string): SessionView | null {
-    const t = this.tracked.get(sessionId);
-    return t ? this.view(t) : null;
-  }
-
   /** The JSONL file of a tracked session. */
   pathOf(sessionId: string): string | null {
     return this.tracked.get(sessionId)?.path ?? null;
   }
 
-  /** Call after the hidden rule changed (a session closed or opened again). Sends "remove" or "upsert". */
-  syncHidden(): void {
-    for (const t of this.tracked.values()) {
-      if (this.hidden(this.view(t)) !== t.hidden) this.publish(t);
-    }
-  }
-
-  /** Sends the card, or "remove" once if the session is hidden. */
   private publish(t: Tracked): void {
-    const view = this.view(t);
-    const hidden = this.hidden(view);
-    if (!hidden) this.emit('upsert', view);
-    else if (!t.hidden) this.emit('remove', view.id);
-    t.hidden = hidden;
-  }
-
-  /** Sends the card again, for example when a run learns its session id. */
-  resend(sessionId: string): void {
-    const t = this.tracked.get(sessionId);
-    if (t) this.publish(t);
+    this.emit('view', t.session.view());
   }
 
   /** A hook event from Claude Code (POST /api/hooks). */
@@ -115,10 +85,6 @@ export class SessionStore extends EventEmitter {
     t.session.applyHook(event, at);
     t.session.refresh(at);
     this.publish(t);
-  }
-
-  private view(t: Tracked): SessionView {
-    return t.session.view();
   }
 
   private onFile(path: string, stats: Stats | undefined): void {
@@ -144,7 +110,7 @@ export class SessionStore extends EventEmitter {
       session.lastSubagentWrite = this.subagentWrites.get(kind.id) ?? 0;
       for (const { event, at } of this.earlyHooks.get(kind.id) ?? []) session.applyHook(event, at);
       this.earlyHooks.delete(kind.id);
-      t = { session, tail: new FileTail(path, stats.size, START_BYTES), queue: Promise.resolve(), path, hidden: false };
+      t = { session, tail: new FileTail(path, stats.size, START_BYTES), queue: Promise.resolve(), path };
       this.tracked.set(kind.id, t);
     }
     const tracked = t;

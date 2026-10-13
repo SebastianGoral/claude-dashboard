@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path';
+import { pickTitle, readLine, type AssistantPart, type Titles, type UserPart } from './transcript.js';
 
 export type Status = 'working' | 'your_turn' | 'needs_permission' | 'idle';
 
@@ -78,7 +79,7 @@ export class Session {
   lastMessage = '';
   contextTokens = 0;
   /** The latest value of each title line type. */
-  private titles: { custom?: string; agent?: string; ai?: string } = {};
+  private titles: Titles = {};
   /**
    * Timestamp of the last conversation line. Not the file time: Claude Code also appends
    * metadata lines (ai-title, last-prompt) without a timestamp to old sessions.
@@ -112,90 +113,64 @@ export class Session {
   }
 
   applyLine(raw: string): void {
-    let line: any;
-    try {
-      line = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (line.isSidechain) return;
+    const line = readLine(raw);
+    if (!line || line.sidechain) return;
 
-    if (typeof line.cwd === 'string') this.project = projectName(line.cwd, this.projectDir);
-    if (typeof line.gitBranch === 'string' && line.gitBranch) this.branch = line.gitBranch;
-    if (typeof line.entrypoint === 'string') this.source = sourceOf(line.entrypoint);
-    const at = Date.parse(line.timestamp) || this.lastLineAt;
+    if (line.cwd !== null) this.project = projectName(line.cwd, this.projectDir);
+    if (line.branch) this.branch = line.branch;
+    if (line.entrypoint !== null) this.source = sourceOf(line.entrypoint);
+    const at = line.at || this.lastLineAt;
     this.lastLineAt = Math.max(this.lastLineAt, at);
 
-    if (line.type === 'custom-title' && typeof line.customTitle === 'string') this.titles.custom = line.customTitle;
-    else if (line.type === 'agent-name' && typeof line.agentName === 'string') this.titles.agent = line.agentName;
-    else if (line.type === 'ai-title' && typeof line.aiTitle === 'string') this.titles.ai = line.aiTitle;
-    else if (line.type === 'user' && !line.isMeta) this.applyUser(line.message?.content, at);
-    else if (line.type === 'assistant') this.applyAssistant(line.message, at, line.isApiErrorMessage === true || typeof line.error === 'string');
-    else if (line.type === 'system' && line.subtype === 'turn_duration') this.setMarker('user_turn', at);
+    if (line.title) this.titles[line.title.source] = line.title.text;
+    else if (line.user) this.applyUser(line.user, at);
+    else if (line.assistant) this.applyAssistant(line.assistant, at);
+    else if (line.turnEnd) this.setMarker('user_turn', at);
   }
 
-  private applyUser(content: unknown, at: number): void {
+  private applyUser(user: UserPart, at: number): void {
     // Any later line means the permission prompt is gone: approved (tool result) or refused.
     if (this.permission && at > this.permission.since) this.permission = null;
-    this.applyToolResults(content, at);
-    const text = textOf(content);
-    if (text.includes('[Request interrupted by user')) {
-      this.setMarker('user_turn', at);
-    } else if (text.startsWith('<local-command-stdout>') || text.startsWith('<local-command-stderr>')) {
-      // A local slash command (/model, /clear) finished. No turn follows.
+    this.applyToolResults(user, at);
+    if (user.interrupted || user.localCommand) {
+      // An interrupt, or a local slash command (/model, /clear) finished. No turn follows.
       this.setMarker('user_turn', at);
     } else {
       // A prompt or a tool result: Claude works next.
       this.setMarker('claude', at);
-      if (text && !text.startsWith('<')) {
-        this.lastMessage = preview(text);
+      if (user.prompt) {
+        this.lastMessage = preview(user.prompt);
         this.error = null; // A new prompt: old errors are not interesting any more.
       }
     }
   }
 
   /** A tool result with is_error is a tool error. A good result clears the last tool error. */
-  private applyToolResults(content: unknown, at: number): void {
-    if (!Array.isArray(content)) return;
-    for (const b of content) {
-      if (b?.type !== 'tool_result') continue;
-      const text = textOf(b.content).trim();
-      if (b.is_error === true && !USER_REJECT.test(text)) {
-        this.error = { kind: 'tool', text: text.slice(0, ERROR_CHARS) || 'Tool error', tool: this.toolNames.get(b.tool_use_id) ?? null, at };
+  private applyToolResults(user: UserPart, at: number): void {
+    for (const r of user.toolResults) {
+      const text = r.text.trim();
+      if (r.isError && !USER_REJECT.test(text)) {
+        this.error = { kind: 'tool', text: text.slice(0, ERROR_CHARS) || 'Tool error', tool: this.toolNames.get(r.toolUseId) ?? null, at };
       } else if (this.error?.kind === 'tool') {
         this.error = null;
       }
     }
   }
 
-  private applyAssistant(message: any, at: number, apiError: boolean): void {
-    if (apiError) {
-      // Claude Code writes an API error as a synthetic assistant message with the error text.
-      this.error = { kind: 'api', text: textOf(message?.content).slice(0, ERROR_CHARS) || 'API error', tool: null, at };
-    } else if (this.error?.kind === 'api' && message?.model !== '<synthetic>') {
+  private applyAssistant(message: AssistantPart, at: number): void {
+    if (message.apiError) {
+      this.error = { kind: 'api', text: message.text.slice(0, ERROR_CHARS) || 'API error', tool: null, at };
+    } else if (this.error?.kind === 'api' && !message.synthetic) {
       this.error = null;
     }
-    if (Array.isArray(message?.content)) {
-      for (const b of message.content) if (b?.type === 'tool_use' && typeof b.id === 'string') this.toolNames.set(b.id, b.name);
-    }
-    const usage = message?.usage;
-    if (usage) {
-      const tokens =
-        (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
-      if (tokens > 0) this.contextTokens = tokens;
-    }
-    const text = textOf(message?.content);
-    if (text) this.lastMessage = preview(text);
+    for (const t of message.toolUses) this.toolNames.set(t.id, t.name);
+    if (message.contextTokens > 0) this.contextTokens = message.contextTokens;
+    if (message.text) this.lastMessage = preview(message.text);
 
-    // Claude Code writes one line per content block. All blocks of one message share stop_reason.
-    const stop = message?.stop_reason;
+    const stop = message.stopReason;
     if (stop === 'tool_use') {
       if (this.marker !== 'tool') this.subagentRunning = false;
-      if (Array.isArray(message.content)) {
-        for (const b of message.content) {
-          if (b?.type === 'tool_use' && SUBAGENT_TOOLS.has(b.name)) this.subagentRunning = true;
-        }
-      }
+      if (message.toolUses.some((t) => SUBAGENT_TOOLS.has(t.name))) this.subagentRunning = true;
       this.setMarker('tool', at);
     }
     else if (stop === 'end_turn' || stop === 'stop_sequence' || stop === 'max_tokens') this.setMarker('user_turn', at);
@@ -264,8 +239,7 @@ export class Session {
   view(): SessionView {
     return {
       id: this.id,
-      // A title you set wins over the desktop app name, which wins over the generated title.
-      title: this.titles.custom || this.titles.agent || this.titles.ai || null,
+      title: pickTitle(this.titles),
       project: this.project,
       branch: this.branch,
       status: this.status,
@@ -296,15 +270,6 @@ export function projectRoot(cwd: string, projectDir: string): string {
 }
 
 const projectName = (cwd: string, projectDir: string) => basename(projectRoot(cwd, projectDir));
-
-function textOf(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content
-    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
-    .map((b) => b.text)
-    .join('\n');
-}
 
 function preview(text: string): string {
   const flat = text

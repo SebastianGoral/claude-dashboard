@@ -34,25 +34,6 @@ export async function readTailLines(path: string, bytes: number): Promise<string
   }
 }
 
-/** Text of a message content: a string, or the text blocks of a block list. */
-export function textOf(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content
-    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
-    .map((b) => b.text)
-    .join('\n');
-}
-
-/** A short text for a tool input: the command, the file path, the pattern, or the start of the JSON. */
-export function shortInput(tool: string, input: any): string {
-  if (!input || typeof input !== 'object') return '';
-  const value =
-    input.command ?? input.file_path ?? input.notebook_path ?? input.pattern ?? input.url ?? input.query ?? input.description ?? input.prompt;
-  const text = typeof value === 'string' ? value : JSON.stringify(input);
-  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
-}
-
 /** For chokidar: skip everything except session files (<project>/<id>.jsonl) and sub-agent files. */
 export function ignoredPath(path: string): boolean {
   const parts = relative(PROJECTS_DIR, path).split(sep);

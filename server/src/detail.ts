@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { readTailLines, shortInput, textOf } from './files.js';
+import { readTailLines } from './files.js';
+import { readLine, shortInput, type TranscriptLine } from './transcript.js';
 
 /** The detail panel of a session: recent messages and tool calls, and the sub-agents. */
 
@@ -50,36 +51,24 @@ export function parseEntries(lines: string[], { sidechain = false, full = false 
   const entries: Entry[] = [];
   const tools = new Map<string, Extract<Entry, { kind: 'tool' }>>();
   for (const raw of lines) {
-    let line: any;
-    try {
-      line = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (line.isSidechain && !sidechain) continue;
-    const at = Date.parse(line.timestamp) || 0;
-    const content = line.message?.content;
-    if (line.type === 'user' && !line.isMeta) {
-      if (Array.isArray(content)) {
-        for (const b of content) {
-          if (b?.type !== 'tool_result') continue;
-          const tool = tools.get(b.tool_use_id);
-          if (!tool) continue;
-          tool.result = text(textOf(b.content).trim() || (typeof b.content === 'string' ? b.content : ''), RESULT_CHARS);
-          tool.isError = b.is_error === true;
-          tool.doneAt = at;
-        }
+    const line = readLine(raw);
+    if (!line || (line.sidechain && !sidechain)) continue;
+    const { at, user, assistant } = line;
+    if (user) {
+      for (const r of user.toolResults) {
+        const tool = tools.get(r.toolUseId);
+        if (!tool) continue;
+        tool.result = text(r.text.trim(), RESULT_CHARS);
+        tool.isError = r.isError;
+        tool.doneAt = at;
       }
-      const prompt = textOf(content).trim();
-      if (prompt && !prompt.startsWith('<')) entries.push({ kind: 'user', at, text: text(prompt, TEXT_CHARS) });
-    } else if (line.type === 'assistant' && Array.isArray(content)) {
-      for (const b of content) {
-        if (b?.type === 'text' && b.text?.trim()) entries.push({ kind: 'assistant', at, text: text(b.text.trim(), TEXT_CHARS) });
-        if (b?.type === 'tool_use') {
-          const entry = { kind: 'tool' as const, at, id: b.id, tool: b.name, input: shortInput(b.name, b.input), result: null, isError: false, doneAt: null };
-          tools.set(b.id, entry);
-          entries.push(entry);
-        }
+      if (user.prompt) entries.push({ kind: 'user', at, text: text(user.prompt, TEXT_CHARS) });
+    } else if (assistant) {
+      for (const t of assistant.texts) if (t.trim()) entries.push({ kind: 'assistant', at, text: text(t.trim(), TEXT_CHARS) });
+      for (const t of assistant.toolUses) {
+        const entry = { kind: 'tool' as const, at, id: t.id, tool: t.name, input: shortInput(t.input), result: null, isError: false, doneAt: null };
+        tools.set(t.id, entry);
+        entries.push(entry);
       }
     }
   }
@@ -108,21 +97,10 @@ async function readSubagents(sessionFile: string, sessionId: string, now: number
         readTailLines(path, SUBAGENT_TAIL_BYTES).catch(() => []),
       ]);
       const entries = parseEntries(lines, { sidechain: true });
-      const first = lines[0] ? Date.parse(JSON.parse(lines[0]).timestamp ?? '') : NaN;
+      const first = (lines[0] && readLine(lines[0])?.at) || NaN;
       // Finished: the last assistant message ended the turn. Else the open tool call is the current tool.
-      let finished = false;
-      for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-          const line = JSON.parse(lines[i]);
-          if (line.type === 'assistant') {
-            finished = line.message?.stop_reason === 'end_turn';
-            break;
-          }
-          if (line.type === 'user') break;
-        } catch {
-          // A cut line: go on.
-        }
-      }
+      const turns = lines.map(readLine).filter((l): l is TranscriptLine => l !== null && (l.user !== null || l.assistant !== null));
+      const finished = turns.at(-1)?.assistant?.stopReason === 'end_turn';
       const open = [...entries].reverse().find((e) => e.kind === 'tool' && e.result === null) as Extract<Entry, { kind: 'tool' }> | undefined;
       const status: SubagentStatus = finished ? 'done' : now - info.mtimeMs > SUBAGENT_STALE_MS ? 'stopped' : 'running';
       return {

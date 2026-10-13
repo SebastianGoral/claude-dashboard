@@ -1,16 +1,8 @@
 import { execFile } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { findProcess } from './processes.js';
 
 const run = promisify(execFile);
-
-/**
- * Claude Code writes one file per running process: ~/.claude/sessions/<pid>.json.
- * A desktop app session also has entrypoint "claude-desktop" and hostSessionId "local_<id>".
- */
-const PROCESS_DIR = join(homedir(), '.claude', 'sessions');
 
 // Selects the Terminal.app tab that uses the TTY and brings only the tab's window to the front.
 // Other Terminal windows stay where they are.
@@ -38,31 +30,8 @@ on run argv
   return "ok"
 end run`;
 
-export interface ProcessInfo {
-  pid: number;
-  entrypoint?: string;
-  hostSessionId?: string;
-  /** Process start time, as `ps -o lstart=` prints it in UTC. */
-  procStart?: string;
-}
-
 /** The desktop app accepts only this id format in its link. */
 const DESKTOP_SESSION_ID = /^local_[A-Za-z0-9-]{1,64}$/;
-
-export async function findProcess(sessionId: string): Promise<ProcessInfo | null> {
-  const files = (await readdir(PROCESS_DIR).catch(() => [])).filter((f) => f.endsWith('.json'));
-  for (const file of files) {
-    try {
-      const info = JSON.parse(await readFile(join(PROCESS_DIR, file), 'utf8'));
-      if (info.sessionId !== sessionId || typeof info.pid !== 'number') continue;
-      process.kill(info.pid, 0); // Throws if the process does not exist.
-      return info;
-    } catch {
-      // Unreadable file or dead process: try the next file.
-    }
-  }
-  return null;
-}
 
 /** Returns an error text, or null when the session (Terminal.app tab or desktop app) is now in front. */
 export async function focusTerminal(sessionId: string): Promise<string | null> {

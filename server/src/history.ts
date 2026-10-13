@@ -3,8 +3,9 @@ import { open, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseEntries, type Entry } from './detail.js';
-import { PROJECTS_DIR, readTailLines, shortInput, textOf } from './files.js';
+import { PROJECTS_DIR, readTailLines } from './files.js';
 import { projectRoot } from './session.js';
+import { pickTitle, readLine, shortInput, type Titles, type TranscriptLine } from './transcript.js';
 
 /** History (all session files), search over them, and Markdown export. Plain Node streams over JSONL. */
 
@@ -108,31 +109,22 @@ const clip = (text: string, max: number) => {
 
 /** Title, project, branch and first prompt from the start and the end of the file. */
 function summarize(file: SessionFile, head: string[], tail: string[]): HistoryItem {
-  const titles: { custom?: string; agent?: string; ai?: string } = {};
+  const titles: Titles = {};
   let cwd: string | null = null;
   let branch: string | null = null;
   let firstPrompt = '';
   for (const raw of [...head, ...tail]) {
-    let line: any;
-    try {
-      line = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (typeof line.cwd === 'string') cwd ??= line.cwd;
-    if (typeof line.gitBranch === 'string' && line.gitBranch) branch = line.gitBranch;
-    if (line.type === 'custom-title' && line.customTitle) titles.custom = line.customTitle;
-    else if (line.type === 'agent-name' && line.agentName) titles.agent = line.agentName;
-    else if (line.type === 'ai-title' && line.aiTitle) titles.ai = line.aiTitle;
-    else if (!firstPrompt && line.type === 'user' && !line.isMeta && !line.isSidechain) {
-      const text = textOf(line.message?.content).trim();
-      if (text && !text.startsWith('<')) firstPrompt = clip(text, PREVIEW_CHARS);
-    }
+    const line = readLine(raw);
+    if (!line) continue;
+    cwd ??= line.cwd;
+    if (line.branch) branch = line.branch;
+    if (line.title) titles[line.title.source] = line.title.text;
+    else if (!firstPrompt && !line.sidechain && line.user?.prompt) firstPrompt = clip(line.user.prompt, PREVIEW_CHARS);
   }
   const folder = cwd ? projectRoot(cwd, basename(dirname(file.path))) : null;
   return {
     id: file.id,
-    title: titles.custom || titles.agent || titles.ai || null,
+    title: pickTitle(titles),
     project: folder ? basename(folder) : basename(dirname(file.path)),
     folder,
     branch,
@@ -182,24 +174,13 @@ export async function listFolders(extra: string[], hidden: string[]): Promise<Fo
 }
 
 /** The text of a line that can match, with its kind. One line can have several parts. */
-function searchableParts(line: any): { kind: SearchHit['kind']; tool: string | null; text: string }[] {
-  const content = line.message?.content;
+function searchableParts({ user, assistant }: TranscriptLine): { kind: SearchHit['kind']; tool: string | null; text: string }[] {
   const parts: { kind: SearchHit['kind']; tool: string | null; text: string }[] = [];
-  if (line.type === 'user' && !line.isMeta) {
-    if (typeof content === 'string') parts.push({ kind: 'prompt', tool: null, text: content });
-    else if (Array.isArray(content)) {
-      for (const b of content) {
-        if (b?.type === 'text') parts.push({ kind: 'prompt', tool: null, text: b.text ?? '' });
-        if (b?.type === 'tool_result') parts.push({ kind: 'result', tool: null, text: textOf(b.content) || (typeof b.content === 'string' ? b.content : '') });
-      }
-    }
-  } else if (line.type === 'assistant' && Array.isArray(content)) {
-    for (const b of content) {
-      if (b?.type === 'text') parts.push({ kind: 'answer', tool: null, text: b.text ?? '' });
-      // Tool inputs hold the file paths, commands and patterns.
-      if (b?.type === 'tool_use') parts.push({ kind: 'tool', tool: b.name, text: `${shortInput(b.name, b.input)} ${JSON.stringify(b.input ?? {})}` });
-    }
-  }
+  for (const text of user?.texts ?? []) parts.push({ kind: 'prompt', tool: null, text });
+  for (const r of user?.toolResults ?? []) parts.push({ kind: 'result', tool: null, text: r.text });
+  for (const text of assistant?.texts ?? []) parts.push({ kind: 'answer', tool: null, text });
+  // Tool inputs hold the file paths, commands and patterns.
+  for (const t of assistant?.toolUses ?? []) parts.push({ kind: 'tool', tool: t.name, text: `${shortInput(t.input)} ${JSON.stringify(t.input ?? {})}` });
   return parts;
 }
 
@@ -230,13 +211,8 @@ export async function search(query: string): Promise<SearchResult> {
     for await (const raw of lines) {
       // Fast filter on the raw JSON line; most lines do not contain the text.
       if (!raw.toLowerCase().includes(needle)) continue;
-      let line: any;
-      try {
-        line = JSON.parse(raw);
-      } catch {
-        continue;
-      }
-      if (line.isSidechain) continue;
+      const line = readLine(raw);
+      if (!line || line.sidechain) continue;
       for (const part of searchableParts(line)) {
         const index = part.text.toLowerCase().indexOf(needle);
         if (index === -1) continue;
@@ -244,7 +220,7 @@ export async function search(query: string): Promise<SearchResult> {
           sessionId: file.id,
           title: item?.title ?? null,
           project: item?.project ?? '',
-          at: Date.parse(line.timestamp) || file.mtimeMs,
+          at: line.at || file.mtimeMs,
           kind: part.kind,
           tool: part.tool,
           snippet: snippet(part.text, index, needle.length),
