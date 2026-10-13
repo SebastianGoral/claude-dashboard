@@ -283,17 +283,19 @@ export class Session {
 }
 
 /**
- * The project folder name. `cwd` can be a subfolder, so walk up to the folder that Claude Code
- * encoded as `projectDir`. A worktree under ".claude/worktrees" uses the name of its repo.
+ * The project folder path. `cwd` can be a subfolder, so walk up to the folder that Claude Code
+ * encoded as `projectDir`. A worktree under ".claude/worktrees" uses its repo.
  */
-function projectName(cwd: string, projectDir: string): string {
+export function projectRoot(cwd: string, projectDir: string): string {
   const worktree = cwd.indexOf('/.claude/worktrees/');
-  if (worktree > 0) return basename(cwd.slice(0, worktree));
+  if (worktree > 0) return cwd.slice(0, worktree);
   for (let dir = cwd; dir !== dirname(dir); dir = dirname(dir)) {
-    if (dir.replace(/[^a-zA-Z0-9]/g, '-') === projectDir) return basename(dir);
+    if (dir.replace(/[^a-zA-Z0-9]/g, '-') === projectDir) return dir;
   }
-  return basename(cwd);
+  return cwd;
 }
+
+const projectName = (cwd: string, projectDir: string) => basename(projectRoot(cwd, projectDir));
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;

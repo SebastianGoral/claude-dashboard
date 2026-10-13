@@ -1,9 +1,10 @@
 import { createReadStream } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseEntries, type Entry } from './detail.js';
 import { PROJECTS_DIR, readTailLines, shortInput, textOf } from './files.js';
+import { projectRoot } from './session.js';
 
 /** History (all session files), search over them, and Markdown export. Plain Node streams over JSONL. */
 
@@ -11,6 +12,8 @@ export interface HistoryItem {
   id: string;
   title: string | null;
   project: string;
+  /** The project folder path, or null if no line has a cwd. */
+  folder: string | null;
   branch: string | null;
   firstPrompt: string;
   /** The file time, epoch milliseconds. */
@@ -126,13 +129,12 @@ function summarize(file: SessionFile, head: string[], tail: string[]): HistoryIt
       if (text && !text.startsWith('<')) firstPrompt = clip(text, PREVIEW_CHARS);
     }
   }
-  // A worktree under .claude/worktrees uses the name of its repo, as in session.ts.
-  const worktree = cwd?.indexOf('/.claude/worktrees/') ?? -1;
-  const project = cwd ? basename(worktree > 0 ? cwd.slice(0, worktree) : cwd) : basename(join(file.path, '..'));
+  const folder = cwd ? projectRoot(cwd, basename(dirname(file.path))) : null;
   return {
     id: file.id,
     title: titles.custom || titles.agent || titles.ai || null,
-    project,
+    project: folder ? basename(folder) : basename(dirname(file.path)),
+    folder,
     branch,
     firstPrompt,
     lastActivity: file.mtimeMs,
@@ -153,6 +155,30 @@ export async function listHistory(): Promise<HistoryItem[]> {
     cache.set(file.path, { mtimeMs: file.mtimeMs, size: file.size, item });
     return item;
   });
+}
+
+export interface Folder {
+  path: string;
+  name: string;
+  /** The newest session file time in this folder, or 0 for an added folder without sessions. */
+  lastActivity: number;
+}
+
+/**
+ * Project folders for new sessions: the folders of past sessions plus the folders the user added.
+ * The newest first. Hidden folders and folders that no longer exist are left out.
+ */
+export async function listFolders(extra: string[], hidden: string[]): Promise<Folder[]> {
+  const latest = new Map<string, number>();
+  for (const item of await listHistory()) {
+    if (item.folder) latest.set(item.folder, Math.max(latest.get(item.folder) ?? 0, item.lastActivity));
+  }
+  for (const path of extra) if (!latest.has(path)) latest.set(path, 0);
+  for (const path of hidden) latest.delete(path);
+  const folders = await mapLimit([...latest], CONCURRENCY, async ([path, lastActivity]) =>
+    (await stat(path).catch(() => null))?.isDirectory() ? { path, name: basename(path), lastActivity } : null,
+  );
+  return folders.filter((f): f is Folder => f !== null).sort((a, b) => b.lastActivity - a.lastActivity);
 }
 
 /** The text of a line that can match, with its kind. One line can have several parts. */

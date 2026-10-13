@@ -27,8 +27,18 @@ export interface Session {
 // Same shape as SettingsView in server/src/settings.ts.
 export interface Settings {
   muted: boolean;
+  newSessionApp: 'terminal' | 'desktop';
+  hiddenFolders: string[];
+  extraFolders: string[];
   desktopConnected: boolean;
   hooksInstalled: boolean;
+}
+
+// Same shape as Folder in server/src/history.ts.
+export interface Folder {
+  path: string;
+  name: string;
+  lastActivity: number;
 }
 
 export const isWaiting = (s: Session) => s.status === 'your_turn' || s.status === 'needs_permission';

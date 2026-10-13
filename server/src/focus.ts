@@ -87,3 +87,21 @@ export async function focusTerminal(sessionId: string): Promise<string | null> {
   const result = await run('osascript', ['-e', FOCUS_SCRIPT, `/dev/${tty}`]);
   return result.stdout.trim() === 'ok' ? null : 'No Terminal.app tab for this session';
 }
+
+// Opens a new Terminal.app window in the folder and starts claude. "quoted form of" makes the path safe for the shell.
+const NEW_SESSION_SCRIPT = `
+on run argv
+  set folderPath to item 1 of argv
+  tell application "Terminal" to do script "cd " & quoted form of folderPath & " && claude"
+  tell application "System Events" to set frontmost of process "Terminal" to true
+end run`;
+
+/** Starts a new Claude Code session in the folder, in Terminal.app or in the desktop app. */
+export async function openNewSession(folder: string, app: 'terminal' | 'desktop'): Promise<void> {
+  if (app === 'desktop') {
+    // Undocumented link. The desktop app uses it for its Finder menu item "New Claude Code Session Here".
+    await run('open', [`claude://code/new?folder=${encodeURIComponent(folder)}&source=services`]);
+    return;
+  }
+  await run('osascript', ['-e', NEW_SESSION_SCRIPT, folder]);
+}

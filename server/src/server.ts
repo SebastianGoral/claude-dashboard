@@ -3,8 +3,11 @@ import Fastify from 'fastify';
 import { ClosedStore } from './closed.js';
 import { readDetail } from './detail.js';
 import { findSessionFile } from './files.js';
-import { exportMarkdown, listHistory, search } from './history.js';
-import { focusTerminal } from './focus.js';
+import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { isAbsolute, resolve } from 'node:path';
+import { exportMarkdown, listFolders, listHistory, search } from './history.js';
+import { focusTerminal, openNewSession } from './focus.js';
 import { hooksInstalled, installHooks, removeHooks } from './hooks.js';
 import type { HookEvent } from './session.js';
 import { SettingsStore } from './settings.js';
@@ -103,9 +106,45 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<v
     }
   });
 
-  app.post<{ Body: { muted?: boolean } }>('/api/settings', async (req) => {
-    await settings.update({ muted: req.body?.muted });
+  app.post<{ Body: { muted?: boolean; newSessionApp?: 'terminal' | 'desktop' } }>('/api/settings', async (req) => {
+    await settings.update({ muted: req.body?.muted, newSessionApp: req.body?.newSessionApp });
     return settings.view();
+  });
+
+  // Project folders for new sessions, the newest first.
+  const folders = () => {
+    const { extraFolders, hiddenFolders } = settings.view();
+    return listFolders(extraFolders, hiddenFolders);
+  };
+  app.get('/api/folders', folders);
+
+  // Starts a new session. Only a folder from the list, so the request cannot run claude in any path.
+  app.post<{ Body: { path?: string } }>('/api/folders/open', async (req, reply) => {
+    const path = req.body?.path;
+    if (!(await folders()).some((f) => f.path === path)) return reply.code(404).send({ error: 'Unknown folder' });
+    try {
+      await openNewSession(path!, settings.view().newSessionApp);
+      return { ok: true };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ error: 'Could not start a new session' });
+    }
+  });
+
+  app.post<{ Body: { path?: string } }>('/api/folders/add', async (req, reply) => {
+    const raw = req.body?.path?.trim() ?? '';
+    const path = resolve(raw.replace(/^~(?=$|\/)/, homedir()));
+    if (!isAbsolute(raw.replace(/^~/, '/')) || !(await stat(path).catch(() => null))?.isDirectory()) {
+      return reply.code(400).send({ error: 'Not a folder. Use a full path, for example ~/projects/app' });
+    }
+    await settings.addFolder(path);
+    return { ok: true };
+  });
+
+  app.post<{ Body: { path?: string } }>('/api/folders/hide', async (req, reply) => {
+    if (typeof req.body?.path !== 'string') return reply.code(400).send({ error: 'path is required' });
+    await settings.hideFolder(req.body.path);
+    return { ok: true };
   });
 
   // Recent messages, tool calls and sub-agents of a session. Also for closed and old sessions.

@@ -27,7 +27,14 @@ function useMap<T extends { id: string }>() {
  */
 export function useEvents() {
   const sessions = useMap<Session>();
-  const [settings, setSettings] = useState<Settings>({ muted: false, desktopConnected: false, hooksInstalled: false });
+  const [settings, setSettings] = useState<Settings>({
+    muted: false,
+    newSessionApp: 'terminal',
+    hiddenFolders: [],
+    extraFolders: [],
+    desktopConnected: false,
+    hooksInstalled: false,
+  });
   const [connected, setConnected] = useState(false);
   const [closed, setClosed] = useState<ClosedSession[]>([]);
   const settingsRef = useRef(settings);

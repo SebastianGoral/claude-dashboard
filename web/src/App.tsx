@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { post } from './api';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { get, post } from './api';
 import { DetailPanel } from './DetailPanel';
 import { ago } from './format';
 import { History } from './History';
 import { SessionCard } from './SessionCard';
 import { unlockSound } from './sounds';
-import { isWaiting, type ClosedSession, type Session, type Settings, type Status } from './types';
+import { isWaiting, type ClosedSession, type Folder, type Session, type Settings, type Status } from './types';
 import { useEvents } from './useEvents';
 
 const ORDER: Record<Status, number> = { your_turn: 0, needs_permission: 1, working: 2, idle: 3 };
@@ -39,13 +39,20 @@ interface SectionProps {
   now: number;
   className?: string;
   onDetails: (id: string) => void;
+  /** Starts a new session in the project folder. Only on project groups. */
+  onNew?: () => void;
 }
 
-function Section({ title, sessions, now, className, onDetails }: SectionProps) {
+function Section({ title, sessions, now, className, onDetails, onNew }: SectionProps) {
   return (
     <section className={className}>
       <h2>
         {title} <span className="count">{sessions.length}</span>
+        {onNew && (
+          <button type="button" className="new-button" onClick={onNew} title="Start a new session in this folder">
+            + New
+          </button>
+        )}
       </h2>
       <div className="grid">
         {sessions.map((s) => (
@@ -82,6 +89,53 @@ function ClosedSection({ closed, onDetails }: { closed: ClosedSession[]; onDetai
   );
 }
 
+/** The "New session" menu: all project folders, with hide, and a field to add a folder. */
+function NewSessionMenu({ folders, onOpen, onChange }: { folders: Folder[]; onOpen: (path: string) => void; onChange: () => void }) {
+  const [path, setPath] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    const err = await post('/api/folders/add', { path });
+    setError(err);
+    if (!err) setPath('');
+    onChange();
+  }
+
+  async function hide(folder: string) {
+    setError(await post('/api/folders/hide', { path: folder }));
+    onChange();
+  }
+
+  return (
+    <details className="new-menu" onToggle={(e) => (e.currentTarget.open ? onChange() : undefined)}>
+      <summary className="header-toggle">New session</summary>
+      <div className="new-menu-panel">
+        <ul>
+          {folders.map((f) => (
+            <li key={f.path}>
+              <button type="button" className="folder" onClick={() => onOpen(f.path)} title={f.path}>
+                <span className="title">{f.name}</span>
+                <span className="folder-path">{f.path}</span>
+              </button>
+              <button type="button" className="details-button" onClick={() => hide(f.path)} title="Hide this folder">
+                hide
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form onSubmit={add}>
+          <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/path/to/project" />
+          <button type="submit" disabled={!path.trim()}>
+            Add
+          </button>
+        </form>
+        {error && <span className="error">{error}</span>}
+      </div>
+    </details>
+  );
+}
+
 /** Mute and hooks. Both are server settings, so the web app and the desktop app share them. */
 function HeaderToggles({ settings }: { settings: Settings }) {
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +160,14 @@ function HeaderToggles({ settings }: { settings: Settings }) {
       </button>
       <button type="button" className="header-toggle" onClick={() => post('/api/settings', { muted: !settings.muted })}>
         Sound: {settings.muted ? 'off' : 'on'}
+      </button>
+      <button
+        type="button"
+        className="header-toggle"
+        onClick={() => post('/api/settings', { newSessionApp: settings.newSessionApp === 'terminal' ? 'desktop' : 'terminal' })}
+        title="The app for a new session"
+      >
+        New in: {settings.newSessionApp === 'terminal' ? 'Terminal' : 'Desktop'}
       </button>
       {error && <span className="error">{error}</span>}
     </>
@@ -142,6 +204,18 @@ export function App() {
   // Sessions that wait for you are in their own section at the top, not in the project groups.
   const groups = groupByProject(list.filter((s) => !isWaiting(s)));
 
+  // Project folders for "+ New". Load again when a new project shows up.
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [newError, setNewError] = useState<string | null>(null);
+  const loadFolders = useCallback(() => {
+    get<Folder[]>('/api/folders').then(setFolders, () => undefined);
+  }, []);
+  const projectKey = groups.map((g) => g.project).sort().join('\n');
+  useEffect(loadFolders, [loadFolders, projectKey]);
+  const openFolder = async (path: string) => setNewError(await post('/api/folders/open', { path }));
+  // A group knows only the project name. Use the newest folder with that name.
+  const folderOf = (project: string) => folders.find((f) => f.name === project)?.path;
+
   const closeDetail = useCallback(() => setDetailId(null), []);
   const detailTitle = (id: string) => {
     const s = sessions.get(id) ?? closed.find((c) => c.id === id);
@@ -166,17 +240,29 @@ export function App() {
           </a>
         </nav>
         <div className="header-actions">
+          <NewSessionMenu folders={folders} onOpen={openFolder} onChange={loadFolders} />
           <HeaderToggles settings={settings} />
         </div>
       </header>
+      {newError && <p className="error">{newError}</p>}
       {tab === 'history' && <History onDetails={setDetailId} />}
       {tab === 'live' && (
         <>
           {list.length === 0 && <p className="empty">No active sessions in the last 12 hours.</p>}
           {waiting.length > 0 && <Section title="Waiting for you" sessions={waiting} now={now} className="waiting" onDetails={setDetailId} />}
-          {groups.map((g) => (
-            <Section key={g.project} title={g.project} sessions={g.sessions} now={now} onDetails={setDetailId} />
-          ))}
+          {groups.map((g) => {
+            const folder = folderOf(g.project);
+            return (
+              <Section
+                key={g.project}
+                title={g.project}
+                sessions={g.sessions}
+                now={now}
+                onDetails={setDetailId}
+                onNew={folder ? () => openFolder(folder) : undefined}
+              />
+            );
+          })}
           <ClosedSection closed={closed} onDetails={setDetailId} />
         </>
       )}
