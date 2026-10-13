@@ -1,5 +1,5 @@
 # Push a tag such as v0.2.0. This builds the desktop app, makes a GitHub release with the zips
-# (install.sh downloads them) and publishes the npm package (npx claude-dash).
+# (install.sh downloads them) and publishes the npm package (npx @sebastiangoral/claude-dash).
 name: Release
 
 on:

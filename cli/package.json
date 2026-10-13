@@ -1,5 +1,5 @@
 {
-  "name": "claude-dash",
+  "name": "@sebastiangoral/claude-dash",
   "version": "0.1.0",
   "description": "A local dashboard for macOS that shows all your Claude Code sessions at once.",
   "license": "MIT",

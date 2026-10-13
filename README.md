@@ -26,7 +26,7 @@ The script downloads the newest app for your Mac (Apple Silicon or Intel), puts 
 ### In the browser (needs Node.js 22)
 
 ```sh
-npx claude-dash
+npx @sebastiangoral/claude-dash
 ```
 
 The dashboard opens at http://127.0.0.1:4317. Press Ctrl+C to stop it. You get no Dock badge, menu bar icon or notifications.
