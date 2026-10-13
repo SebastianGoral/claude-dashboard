@@ -1,0 +1,46 @@
+# Built-in workflow. Copy this file to ~/.claude-dash/workflows/ to make your own.
+# Placeholders: {{task}} and {{check}} come from the form. {{<step id>}} is the last answer of that step.
+# access: read = read files, git (status, diff, log, show) and the check command. edit = also edit files and run npm, npx, node, git (no push).
+# check: a step with a check runs again until the check passes, at most maxIterations times.
+name: Plan, build, review
+steps:
+  - id: plan
+    name: Plan
+    access: read
+    prompt: |
+      You are the planner. Do not change any files.
+
+      Task: {{task}}
+
+      Read the code that you need. Then write a short, numbered plan:
+      the files to change, what to change in each file, and how to verify the result.
+      The check command for this task is: {{check}}
+
+  - id: build
+    name: Build
+    access: edit
+    check: "{{check}}"
+    maxIterations: 5
+    prompt: |
+      You are the builder.
+
+      Task: {{task}}
+
+      Follow this plan:
+
+      {{plan}}
+
+      Make the changes. When you are done, run the check command: {{check}}
+
+  - id: review
+    name: Review
+    access: read
+    prompt: |
+      You are the reviewer. Another agent made a change. Do not change any files.
+
+      Task: {{task}}
+
+      Run `git status` and `git diff` to see the change. New files are untracked, so read them too.
+      Look for bugs, missing parts of the task, and risky changes.
+      Start your answer with one line: "Verdict: OK" or "Verdict: Changes needed".
+      Then give a short list of findings, with file and line.

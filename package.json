@@ -1,0 +1,19 @@
+{
+  "name": "claude-dash",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web",
+    "desktop"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
+    "dev:desktop": "concurrently -n web,desktop -c green,magenta \"npm run dev -w web\" \"npm run dev -w desktop\"",
+    "build:desktop": "npm run build -w web && npm run build -w desktop",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "typescript": "^7.0.2"
+  }
+}
